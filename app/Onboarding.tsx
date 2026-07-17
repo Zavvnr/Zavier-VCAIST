@@ -62,7 +62,8 @@ export function Onboarding() {
               and early warnings you can actually understand.
             </p>
             <div className="welcome-actions">
-              <Link className="button dark welcome-primary" href="/demo">Take the financial demo <span aria-hidden="true">→</span></Link>
+              <Link className="button dark welcome-primary" href="/demo">Take a demo <span aria-hidden="true">→</span></Link>
+              <Link className="button welcome-secondary" href="/workspace">Try with your own project <span aria-hidden="true">→</span></Link>
               <a className="welcome-text-link" href="#how-it-works">Show me how it works <span aria-hidden="true">↓</span></a>
             </div>
             <div className="welcome-reassurance">

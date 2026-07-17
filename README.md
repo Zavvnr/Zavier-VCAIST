@@ -67,7 +67,8 @@ The interface uses a desktop sidebar, fluid content grids, touch-friendly contro
 
 ### User-facing product
 
-- **Guided welcome page** — explains what VCAIST is for, walks through its four-step safety loop, and offers the financial demo when the user is ready.
+- **Guided welcome page** — explains what VCAIST is for, walks through its four-step safety loop, and offers both a demo and a direct path into the user's own project.
+- **Direct workspace** — skips the tutorial and demo, opens the project-source chooser immediately, and accepts a local folder, Google Drive folder, or public GitHub repository.
 - **Workspace overview** — business metrics, connection state, model selector, re-scan action, and a live order simulation.
 - **Project importer** — one source chooser for local directories, Google Drive folders, and public GitHub repositories, with source-file filtering and clear connection state.
 - **Business controls** — four sliders bound to the sample app's price, discount, discount threshold, and shipping fee.
@@ -82,6 +83,7 @@ The interface uses a desktop sidebar, fluid content grids, touch-friendly contro
 - `app/Onboarding.tsx` — interactive tutorial and first-run explanation at `/`
 - `app/Dashboard.tsx` — interactive workspace and all four workspace views
 - `app/demo/page.tsx` — financial demo route at `/demo`
+- `app/workspace/page.tsx` — direct project workspace route at `/workspace`
 - `app/components/AppChrome.tsx` — shared responsive navigation shell
 - `app/help/page.tsx` — help center route
 - `app/settings/` — settings route and persistent preference controls

@@ -33,20 +33,30 @@ const viewOptions: Array<{ id: WorkspaceView; label: string; count?: number }> =
   { id: "tests", label: "Safety tests", count: 1 },
 ];
 
-export function Dashboard() {
+export function Dashboard({ startWithImporter = false }: { startWithImporter?: boolean }) {
   const [view, setView] = useState<WorkspaceView>("overview");
   const [knobs, setKnobs] = useState<PricingKnobs>(defaultKnobs);
   const [quantity, setQuantity] = useState(3);
   const [scanning, setScanning] = useState(false);
-  const [scanMessage, setScanMessage] = useState("Demo app · Last checked 2 minutes ago");
+  const [scanMessage, setScanMessage] = useState(
+    startWithImporter ? "Choose a project source to begin" : "Demo app · Last checked 2 minutes ago",
+  );
   const [mapMode, setMapMode] = useState<"plain" | "technical">("plain");
-  const [importOpen, setImportOpen] = useState(false);
-  const [project, setProject] = useState<ImportedProject>({
-    name: "ShopSpring",
-    fileCount: 27,
-    source: "demo",
-    sourceLabel: "Demo app",
-  });
+  const [importOpen, setImportOpen] = useState(startWithImporter);
+  const [project, setProject] = useState<ImportedProject>(startWithImporter
+    ? {
+        name: "Your project",
+        fileCount: 0,
+        source: "demo",
+        sourceLabel: "Not connected",
+      }
+    : {
+        name: "ShopSpring",
+        fileCount: 27,
+        source: "demo",
+        sourceLabel: "Demo app",
+      });
+  const projectConnected = project.fileCount > 0;
 
   const snapshot = useMemo(() => calculateBusinessSnapshot(knobs), [knobs]);
   const currentOrder = useMemo(
@@ -76,14 +86,21 @@ export function Dashboard() {
   }
 
   return (
-    <AppChrome active="workspace" project={project}>
+    <AppChrome
+      active="workspace"
+      project={project}
+      projectConnected={projectConnected}
+      workspaceHref={startWithImporter ? "/workspace" : "/demo"}
+    >
       <div className="workspace-header">
         <div>
           <div className="eyebrow-row">
             <span>{project.name}</span><span aria-hidden="true">/</span><span>Project scan</span>
           </div>
-          <h1>Your app control room</h1>
-          <p>See what matters, try changes safely, and catch surprises early.</p>
+          <h1>{projectConnected ? "Your app control room" : "Start with your own project"}</h1>
+          <p>{projectConnected
+            ? "See what matters, try changes safely, and catch surprises early."
+            : "Connect a project directly, without starting the tutorial or financial demo."}</p>
         </div>
         <div className="header-actions">
           <label className="model-picker">
@@ -93,14 +110,20 @@ export function Dashboard() {
               <option value="vcaist-core">VCAIST Core · GPT-5.4</option>
             </select>
           </label>
-          <button className="button secondary" onClick={() => scan(project)} disabled={scanning}>
-            <span className={scanning ? "scan-icon spinning" : "scan-icon"} aria-hidden="true">↻</span>
-            {scanning ? "Checking…" : "Check again"}
+          <button
+            className="button secondary"
+            onClick={() => projectConnected ? scan(project) : setImportOpen(true)}
+            disabled={scanning}
+          >
+            <span className={scanning ? "scan-icon spinning" : "scan-icon"} aria-hidden="true">
+              {projectConnected ? "↻" : "+"}
+            </span>
+            {scanning ? "Checking…" : projectConnected ? "Check again" : "Choose project"}
           </button>
         </div>
       </div>
 
-      <div className="workspace-tabs" role="tablist" aria-label="Workspace views">
+      {projectConnected ? <div className="workspace-tabs" role="tablist" aria-label="Workspace views">
         {viewOptions.map((option) => (
           <button
             key={option.id}
@@ -117,10 +140,10 @@ export function Dashboard() {
             ) : null}
           </button>
         ))}
-      </div>
+      </div> : null}
 
       <div className="workspace-content">
-        <div className="scan-status" role="status" aria-live="polite">
+        {projectConnected ? <div className="scan-status" role="status" aria-live="polite">
           <span className={scanning ? "status-orb scanning" : "status-orb"} aria-hidden="true">
             {scanning ? "↻" : "✓"}
           </span>
@@ -132,9 +155,26 @@ export function Dashboard() {
           <button className="text-button" onClick={() => setImportOpen(true)}>
             Change project source
           </button>
-        </div>
+        </div> : (
+          <section className="direct-workspace-start">
+            <span className="section-kicker">YOUR PROJECT, YOUR CHOICE</span>
+            <h2>Try VCAIST with the app you already have</h2>
+            <p>Choose a local folder, a Google Drive folder, or a public GitHub repository. VCAIST reads supported source files without changing your project.</p>
+            <button className="button dark" onClick={() => setImportOpen(true)}>Choose project source <span aria-hidden="true">→</span></button>
+            <div className="direct-source-list" aria-label="Available project sources">
+              <span>Local folder</span><span>Google Drive</span><span>GitHub</span>
+            </div>
+          </section>
+        )}
 
-        {view === "overview" ? (
+        {projectConnected && project.source !== "demo" ? (
+          <div className="prototype-notice" role="note">
+            <strong>{project.name} is connected.</strong>
+            <span>This prototype uses the guided financial controls below while project-specific AI extraction is being completed.</span>
+          </div>
+        ) : null}
+
+        {projectConnected && view === "overview" ? (
           <Overview
             snapshot={snapshot}
             knobs={knobs}
@@ -149,12 +189,12 @@ export function Dashboard() {
           />
         ) : null}
 
-        {view === "controls" ? (
+        {projectConnected && view === "controls" ? (
           <Controls knobs={knobs} updateKnob={updateKnob} snapshot={snapshot} reset={() => setKnobs(defaultKnobs)} />
         ) : null}
 
-        {view === "map" ? <AppMap mode={mapMode} setMode={setMapMode} /> : null}
-        {view === "tests" ? <SafetyTests results={testResults} shippingFee={knobs.shippingFee} /> : null}
+        {projectConnected && view === "map" ? <AppMap mode={mapMode} setMode={setMapMode} /> : null}
+        {projectConnected && view === "tests" ? <SafetyTests results={testResults} shippingFee={knobs.shippingFee} /> : null}
       </div>
       {importOpen ? (
         <ImportProjectDialog

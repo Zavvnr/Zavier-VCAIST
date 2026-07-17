@@ -9,7 +9,7 @@ const destinations: Array<{
   label: string;
   symbol: string;
 }> = [
-  { id: "workspace", href: "/demo", label: "Demo workspace", symbol: "⌂" },
+  { id: "workspace", href: "/demo", label: "Workspace", symbol: "⌂" },
   { id: "help", href: "/help", label: "Help center", symbol: "?" },
   { id: "settings", href: "/settings", label: "Settings", symbol: "⚙" },
 ];
@@ -18,10 +18,14 @@ export function AppChrome({
   active,
   children,
   project = { name: "ShopSpring", sourceLabel: "Demo app" },
+  projectConnected = true,
+  workspaceHref = "/demo",
 }: {
   active: Destination;
   children: ReactNode;
   project?: { name: string; sourceLabel: string };
+  projectConnected?: boolean;
+  workspaceHref?: string;
 }) {
   return (
     <div className="app-shell">
@@ -38,14 +42,18 @@ export function AppChrome({
             <strong>{project.name}</strong>
             <small>{project.sourceLabel}</small>
           </span>
-          <span className="live-dot" aria-label="Connected" />
+          <span
+            className={projectConnected ? "live-dot" : "live-dot disconnected"}
+            role="img"
+            aria-label={projectConnected ? "Connected" : "Not connected"}
+          />
         </div>
 
         <nav className="side-nav">
           {destinations.map((item) => (
             <Link
               className={active === item.id ? "side-link active" : "side-link"}
-              href={item.href}
+              href={item.id === "workspace" ? workspaceHref : item.href}
               key={item.id}
               aria-current={active === item.id ? "page" : undefined}
             >
@@ -79,12 +87,12 @@ export function AppChrome({
         {destinations.map((item) => (
           <Link
             className={active === item.id ? "mobile-link active" : "mobile-link"}
-            href={item.href}
+            href={item.id === "workspace" ? workspaceHref : item.href}
             key={item.id}
             aria-current={active === item.id ? "page" : undefined}
           >
             <span aria-hidden="true">{item.symbol}</span>
-            {item.id === "workspace" ? "Demo" : item.label.replace(" center", "")}
+            {item.label.replace(" center", "")}
           </Link>
         ))}
       </nav>

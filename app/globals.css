@@ -212,6 +212,11 @@ strong {
   box-sizing: content-box;
 }
 
+.live-dot.disconnected {
+  background: #9aa49f;
+  border-color: #e3e7e5;
+}
+
 .side-nav {
   display: flex;
   flex-direction: column;
@@ -530,6 +535,79 @@ strong {
   background: #edf7f1;
   border: 1px solid #d4e9dc;
   border-radius: 12px;
+}
+
+.direct-workspace-start {
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  justify-content: center;
+  min-height: min(560px, calc(100vh - 210px));
+  padding: clamp(42px, 8vw, 90px) 24px;
+  text-align: center;
+  background:
+    radial-gradient(circle at 50% 18%, rgba(49, 157, 116, 0.12), transparent 34%),
+    white;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  box-shadow: 0 18px 45px rgba(23, 35, 31, 0.06);
+}
+
+.direct-workspace-start h2 {
+  max-width: 620px;
+  margin: 12px 0 10px;
+  font-size: clamp(30px, 5vw, 50px);
+  line-height: 1.03;
+  letter-spacing: -0.045em;
+}
+
+.direct-workspace-start > p {
+  max-width: 580px;
+  margin: 0 0 24px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.direct-workspace-start > .button {
+  min-height: 46px;
+  padding: 0 20px;
+}
+
+.direct-source-list {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 22px;
+}
+
+.direct-source-list span {
+  padding: 7px 11px;
+  color: #64706b;
+  font-size: 10px;
+  font-weight: 700;
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+
+.prototype-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 18px;
+  padding: 11px 13px;
+  color: #66591d;
+  font-size: 11px;
+  line-height: 1.5;
+  background: #fff9df;
+  border: 1px solid #eee0a5;
+  border-radius: 11px;
+}
+
+.prototype-notice strong {
+  flex: 0 0 auto;
 }
 
 .status-orb {
@@ -1839,6 +1917,7 @@ strong {
 .welcome-actions {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 22px;
 }
 
@@ -1848,6 +1927,16 @@ strong {
   font-size: 12px;
   border-radius: 12px;
   box-shadow: 0 10px 25px rgba(23, 35, 31, 0.17);
+}
+
+.welcome-secondary {
+  min-height: 48px;
+  padding: 0 18px;
+  color: var(--ink);
+  font-size: 12px;
+  background: rgba(255, 255, 255, 0.76);
+  border-color: var(--line-strong);
+  border-radius: 12px;
 }
 
 .welcome-text-link {
@@ -3276,7 +3365,8 @@ strong {
   .welcome-hero h1 { font-size: clamp(38px, 12vw, 53px); }
   .welcome-hero-copy > p { font-size: 13px; }
   .welcome-actions { flex-direction: column; gap: 14px; }
-  .welcome-primary { width: 100%; }
+  .welcome-primary, .welcome-secondary { width: 100%; }
+  .prototype-notice { flex-direction: column; }
   .welcome-reassurance { align-items: center; flex-direction: column; gap: 8px; }
   .welcome-product-visual { margin-top: 25px; }
   .welcome-app-window { border-radius: 12px; }

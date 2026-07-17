@@ -45,9 +45,27 @@ test("server-renders the VCAIST tutorial as the home page", async () => {
   assert.match(html, /<title>Welcome · VCAIST<\/title>/i);
   assert.match(html, /Understand the app you built/);
   assert.match(html, /Four steps from/);
-  assert.match(html, /Take the financial demo/);
+  assert.match(html, /Take a demo/);
+  assert.doesNotMatch(html, /Take the financial demo/);
   assert.match(html, /href="\/demo"/);
+  assert.match(html, /Try with your own project/);
+  assert.match(html, /href="\/workspace"/);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton|Your site is taking shape/i);
+});
+
+test("server-renders a direct workspace with the project chooser", async () => {
+  const response = await render("/workspace");
+  assert.equal(response.status, 200);
+
+  const html = await response.text();
+  assert.match(html, /<title>Your workspace · VCAIST<\/title>/i);
+  assert.match(html, /Start with your own project/);
+  assert.match(html, /Try VCAIST with the app you already have/);
+  assert.match(html, /Where is your project\?/);
+  assert.match(html, /Local folder/);
+  assert.match(html, /Google Drive/);
+  assert.match(html, /GitHub/);
+  assert.doesNotMatch(html, /ShopSpring is connected/);
 });
 
 test("server-renders the interactive financial demo separately", async () => {
