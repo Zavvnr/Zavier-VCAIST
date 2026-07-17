@@ -79,7 +79,7 @@ export function Onboarding() {
               <div className="welcome-window-top">
                 <span className="mini-brand">V</span>
                 <span className="window-title">Your app control room</span>
-                <span className="window-model"><i />VCAIST Core</span>
+                <span className="window-model"><i />GPT-5.6 Sol</span>
               </div>
               <div className="welcome-window-body">
                 <div className="welcome-window-side">

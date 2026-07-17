@@ -1,42 +1,48 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import {
+  applyTheme,
+  defaultPreferences,
+  modelGroups,
+  readPreferences,
+  themeOptions,
+  writePreferences,
+  type ModelId,
+  type Preferences,
+  type ThemeId,
+} from "@/lib/preferences";
 
-type Preferences = {
-  autoScan: boolean;
-  showTechnical: boolean;
-  testBoundaries: boolean;
-  plainLanguage: boolean;
-};
-
-const defaults: Preferences = {
-  autoScan: true,
-  showTechnical: false,
-  testBoundaries: true,
-  plainLanguage: true,
-};
+type TogglePreference = "autoScan" | "showTechnical" | "testBoundaries" | "plainLanguage";
 
 export function SettingsPanel() {
-  const [preferences, setPreferences] = useState<Preferences>(defaults);
+  const [preferences, setPreferences] = useState<Preferences>(defaultPreferences);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    const stored = window.localStorage.getItem("vcaist-preferences");
-    if (!stored) return;
-    try {
-      setPreferences({ ...defaults, ...JSON.parse(stored) });
-    } catch {
-      window.localStorage.removeItem("vcaist-preferences");
-    }
+    const stored = readPreferences();
+    setPreferences(stored);
+    applyTheme(stored.theme);
   }, []);
 
-  function toggle(key: keyof Preferences) {
+  function toggle(key: TogglePreference) {
     setSaved(false);
     setPreferences((current) => ({ ...current, [key]: !current[key] }));
   }
 
+  function chooseTheme(theme: ThemeId) {
+    setSaved(false);
+    setPreferences((current) => ({ ...current, theme }));
+    applyTheme(theme);
+  }
+
+  function chooseModel(model: ModelId) {
+    setSaved(false);
+    setPreferences((current) => ({ ...current, model }));
+  }
+
   function save() {
-    window.localStorage.setItem("vcaist-preferences", JSON.stringify(preferences));
+    writePreferences(preferences);
     setSaved(true);
     window.setTimeout(() => setSaved(false), 2200);
   }
@@ -51,11 +57,40 @@ export function SettingsPanel() {
           </div>
           <label className="field-label" htmlFor="settings-model">Active model</label>
           <div className="select-wrap">
-            <select id="settings-model" defaultValue="vcaist-core">
-              <option value="vcaist-core">VCAIST Core · GPT-5.4</option>
+            <select id="settings-model" value={preferences.model} onChange={(event) => chooseModel(event.target.value as ModelId)}>
+              {modelGroups.map((group) => (
+                <optgroup label={group.label} key={group.label}>
+                  {group.options.map((option) => (
+                    <option value={option.id} key={option.id}>{option.label} · {option.detail}</option>
+                  ))}
+                </optgroup>
+              ))}
             </select>
           </div>
-          <div className="model-note"><span aria-hidden="true">i</span><p>More model choices are planned. For now, VCAIST Core keeps every explanation consistent.</p></div>
+          <div className="model-note"><span aria-hidden="true">i</span><p>GPT-5.6 Sol is the default. Model selection is saved on this device; the current prototype still uses the deterministic practice fixture.</p></div>
+        </section>
+
+        <section className="panel settings-section appearance-section">
+          <div className="settings-heading">
+            <span className="settings-icon appearance" aria-hidden="true">◐</span>
+            <div><h2>Color & appearance</h2><p>Choose a workspace palette. Changes preview immediately.</p></div>
+          </div>
+          <div className="theme-grid" role="radiogroup" aria-label="Workspace color theme">
+            {themeOptions.map((theme) => (
+              <button
+                className={preferences.theme === theme.id ? "theme-option active" : "theme-option"}
+                key={theme.id}
+                onClick={() => chooseTheme(theme.id)}
+                role="radio"
+                aria-checked={preferences.theme === theme.id}
+              >
+                <span className={`theme-preview ${theme.id}`} aria-hidden="true"><i /><i /><i /></span>
+                <span className="theme-option-copy"><strong>{theme.label}</strong><small>{theme.description}</small></span>
+                <span className="theme-check" aria-hidden="true">{preferences.theme === theme.id ? "✓" : ""}</span>
+              </button>
+            ))}
+          </div>
+          <p className="appearance-note">Midnight Clay is the default: a black canvas, warm clay actions, light-blue details, and responsive hover shadows.</p>
         </section>
 
         <section className="panel settings-section">

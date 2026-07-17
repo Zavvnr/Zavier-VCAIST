@@ -5,6 +5,13 @@ import { AppChrome } from "./components/AppChrome";
 import { ImportProjectDialog } from "./components/ImportProjectDialog";
 import type { ImportedProject } from "@/lib/import-sources";
 import {
+  defaultPreferences,
+  modelGroups,
+  readPreferences,
+  writePreferences,
+  type ModelId,
+} from "@/lib/preferences";
+import {
   calculateBusinessSnapshot,
   defaultKnobs,
   runSamplePricing,
@@ -68,6 +75,7 @@ export function Dashboard({ startWithImporter = false }: { startWithImporter?: b
   const [view, setView] = useState<WorkspaceView>("overview");
   const [knobs, setKnobs] = useState<PricingKnobs>(defaultKnobs);
   const [quantity, setQuantity] = useState(3);
+  const [model, setModel] = useState<ModelId>(defaultPreferences.model);
   const [scanning, setScanning] = useState(false);
   const [scanCacheHit, setScanCacheHit] = useState(false);
   const [scanMessage, setScanMessage] = useState(
@@ -96,6 +104,10 @@ export function Dashboard({ startWithImporter = false }: { startWithImporter?: b
     if (scanTimer.current !== null) window.clearTimeout(scanTimer.current);
   }, []);
 
+  useEffect(() => {
+    setModel(readPreferences().model);
+  }, []);
+
   const snapshot = useMemo(() => calculateBusinessSnapshot(knobs), [knobs]);
   const currentOrder = useMemo(
     () => runSamplePricing(quantity, knobs),
@@ -111,6 +123,11 @@ export function Dashboard({ startWithImporter = false }: { startWithImporter?: b
 
   function updateKnob<K extends keyof PricingKnobs>(key: K, value: number) {
     setKnobs((current) => ({ ...current, [key]: value }));
+  }
+
+  function updateModel(nextModel: ModelId) {
+    setModel(nextModel);
+    writePreferences({ ...readPreferences(), model: nextModel });
   }
 
   function scan(nextProject: ImportedProject = project, { force = false } = {}) {
@@ -156,8 +173,14 @@ export function Dashboard({ startWithImporter = false }: { startWithImporter?: b
           <label className="model-picker">
             <span className="model-dot" aria-hidden="true" />
             <span className="sr-only">AI model</span>
-            <select defaultValue="vcaist-core" aria-label="AI model">
-              <option value="vcaist-core">VCAIST Core · GPT-5.4</option>
+            <select value={model} onChange={(event) => updateModel(event.target.value as ModelId)} aria-label="AI model">
+              {modelGroups.map((group) => (
+                <optgroup label={group.label} key={group.label}>
+                  {group.options.map((option) => (
+                    <option value={option.id} key={option.id}>{option.label} · {option.detail}</option>
+                  ))}
+                </optgroup>
+              ))}
             </select>
           </label>
           <button

@@ -13,6 +13,11 @@ import {
   parseGitHubRepositoryUrl,
   summarizeProjectFiles,
 } from "../lib/import-sources.ts";
+import {
+  defaultPreferences,
+  modelOptions,
+  themeOptions,
+} from "../lib/preferences.ts";
 
 const templateRoot = new URL("../", import.meta.url);
 
@@ -44,6 +49,7 @@ test("server-renders the VCAIST tutorial as the home page", async () => {
 
   const html = await response.text();
   assert.match(html, /<title>Welcome · VCAIST<\/title>/i);
+  assert.match(html, /data-theme="midnight-clay"/);
   assert.match(html, /Understand the app you built/);
   assert.match(html, /Four steps from/);
   assert.match(html, /Take a demo/);
@@ -79,7 +85,9 @@ test("server-renders the interactive financial demo separately", async () => {
   assert.match(html, /Business controls/);
   assert.match(html, /Change project source/);
   assert.match(html, /A zero-item order pays the customer/);
-  assert.match(html, /VCAIST Core · GPT-5\.4/);
+  assert.match(html, /GPT-5\.6 Sol/);
+  assert.match(html, /GPT-5\.6 Terra/);
+  assert.match(html, /GPT-5\.6 Luna/);
   assert.doesNotMatch(html, /Four steps from/);
 });
 
@@ -100,6 +108,23 @@ test("server-renders the help and settings routes", async () => {
   assert.match(helpHtml, /Your first VCAIST check/);
   assert.match(settingsHtml, /Make VCAIST work your way/);
   assert.match(settingsHtml, /Plain language first/);
+  assert.match(settingsHtml, /Color &amp; appearance/);
+  assert.match(settingsHtml, /Midnight Clay/);
+  assert.match(settingsHtml, /Midnight Sky/);
+});
+
+test("offers the complete supported model and appearance catalogs", () => {
+  assert.deepEqual(modelOptions.map((model) => model.id), [
+    "gpt-5.6-sol",
+    "gpt-5.6-terra",
+    "gpt-5.6-luna",
+    "gpt-5.4",
+    "gpt-5.4-mini",
+    "gpt-5.4-nano",
+  ]);
+  assert.equal(defaultPreferences.model, "gpt-5.6-sol");
+  assert.equal(defaultPreferences.theme, "midnight-clay");
+  assert.equal(themeOptions.length, 4);
 });
 
 test("pricing sandbox exposes the sample app's real zero-quantity defect", () => {
