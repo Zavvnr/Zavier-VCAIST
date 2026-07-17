@@ -143,6 +143,14 @@ test("offers the complete supported model and appearance catalogs", () => {
   assert.equal(themeOptions.length, 4);
 });
 
+test("keeps onboarding labels readable in every theme", async () => {
+  const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  assert.match(css, /\.source-preview button \{[\s\S]*?color: var\(--ink\);[\s\S]*?background: var\(--surface\);/);
+  assert.match(css, /\.source-preview strong \{[\s\S]*?color: var\(--ink\);/);
+  assert.match(css, /\.demo-button \{[\s\S]*?color: var\(--accent-contrast\);[\s\S]*?var\(--green\)/);
+  assert.match(css, /\.lesson-control \{[\s\S]*?background: var\(--surface\);/);
+});
+
 test("pricing sandbox exposes the sample app's real zero-quantity defect", () => {
   const emptyOrder = runSamplePricing(0, defaultKnobs);
   assert.equal(emptyOrder.total, -6.99);
