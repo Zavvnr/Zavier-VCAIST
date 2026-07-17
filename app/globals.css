@@ -537,6 +537,15 @@ strong {
   border-radius: 12px;
 }
 
+.scan-status.loading {
+  background: var(--blue-soft);
+  border-color: #d6e0fb;
+}
+
+.scan-status.loading .status-orb {
+  background: var(--blue);
+}
+
 .direct-workspace-start {
   display: flex;
   align-items: center;
@@ -592,22 +601,157 @@ strong {
   border-radius: 999px;
 }
 
-.prototype-notice {
+.project-scan-progress {
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  min-height: min(490px, calc(100vh - 280px));
+  padding: clamp(42px, 7vw, 76px) 24px;
+  text-align: center;
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  box-shadow: var(--shadow);
+}
+
+.scan-progress-symbol {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 68px;
+  height: 68px;
+  margin-bottom: 18px;
+  background: var(--blue-soft);
+  border-radius: 20px;
+}
+
+.scan-progress-symbol::before,
+.scan-progress-symbol::after,
+.scan-progress-symbol span {
+  position: absolute;
+  width: 30px;
+  height: 4px;
+  content: "";
+  background: var(--blue);
+  border-radius: 999px;
+}
+
+.scan-progress-symbol::before { transform: translateY(-10px); }
+.scan-progress-symbol::after { width: 20px; transform: translate(-5px, 10px); }
+
+.project-scan-progress h2 {
+  margin: 10px 0 7px;
+  font-size: clamp(28px, 4vw, 42px);
+}
+
+.project-scan-progress > p {
+  max-width: 540px;
+  margin-bottom: 26px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.scan-progress-track {
+  width: min(100%, 560px);
+  height: 9px;
+  overflow: hidden;
+  background: #e7ebf6;
+  border-radius: 999px;
+}
+
+.scan-progress-track span {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, var(--blue), #67b5dc);
+  border-radius: inherit;
+  transform-origin: left;
+  animation: scan-progress 1200ms ease-out both;
+}
+
+.scan-progress-steps {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  width: min(100%, 620px);
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.scan-progress-steps span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  color: var(--soft-muted);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.scan-progress-steps b {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  color: white;
+  font-size: 9px;
+  background: #b9c0bd;
+  border-radius: 50%;
+}
+
+.scan-progress-steps .done,
+.scan-progress-steps .active { color: var(--ink); }
+.scan-progress-steps .done b { background: var(--green); }
+.scan-progress-steps .active b { background: var(--blue); }
+
+.project-scan-progress > small {
+  max-width: 580px;
+  margin-top: 24px;
+  color: var(--soft-muted);
+  font-size: 9px;
+}
+
+.prototype-notice.complete {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
+  gap: 11px;
   margin-bottom: 18px;
-  padding: 11px 13px;
-  color: #66591d;
+  padding: 13px 15px;
+  color: #31534a;
   font-size: 11px;
   line-height: 1.5;
-  background: #fff9df;
-  border: 1px solid #eee0a5;
+  background: #edf7f1;
+  border: 1px solid #d4e9dc;
   border-radius: 11px;
 }
 
-.prototype-notice strong {
-  flex: 0 0 auto;
+.notice-complete-icon {
+  display: grid;
+  place-items: center;
+  width: 25px;
+  height: 25px;
+  flex: 0 0 25px;
+  color: white;
+  font-size: 11px;
+  font-weight: 800;
+  background: var(--green);
+  border-radius: 50%;
+}
+
+.prototype-notice.complete > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.prototype-notice.complete strong {
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.prototype-notice.complete small {
+  margin-top: 3px;
+  color: #60716a;
+  font-size: 9px;
 }
 
 .status-orb {
@@ -657,6 +801,11 @@ strong {
 .text-button:hover {
   text-decoration: underline;
   text-underline-offset: 3px;
+}
+
+.text-button:disabled {
+  cursor: wait;
+  opacity: 0.55;
 }
 
 .view-stack {
@@ -3282,6 +3431,11 @@ strong {
   to { transform: rotate(360deg); }
 }
 
+@keyframes scan-progress {
+  from { transform: scaleX(0.06); }
+  to { transform: scaleX(1); }
+}
+
 @keyframes dialog-in {
   from { opacity: 0; transform: translateY(10px) scale(0.985); }
   to { opacity: 1; transform: translateY(0) scale(1); }
@@ -3367,6 +3521,8 @@ strong {
   .welcome-actions { flex-direction: column; gap: 14px; }
   .welcome-primary, .welcome-secondary { width: 100%; }
   .prototype-notice { flex-direction: column; }
+  .scan-progress-steps { grid-template-columns: 1fr; align-items: start; width: auto; }
+  .scan-progress-steps span { justify-content: flex-start; }
   .welcome-reassurance { align-items: center; flex-direction: column; gap: 8px; }
   .welcome-product-visual { margin-top: 25px; }
   .welcome-app-window { border-radius: 12px; }

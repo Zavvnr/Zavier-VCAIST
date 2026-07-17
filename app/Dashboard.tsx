@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { AppChrome } from "./components/AppChrome";
 import { ImportProjectDialog } from "./components/ImportProjectDialog";
 import type { ImportedProject } from "@/lib/import-sources";
@@ -13,6 +13,37 @@ import {
 } from "@/lib/pricing";
 
 type WorkspaceView = "overview" | "controls" | "map" | "tests";
+
+const scanCacheStorageKey = "vcaist-project-scan-cache-v1";
+const scanCacheLifetime = 30 * 24 * 60 * 60 * 1000;
+
+function projectScanCacheKey(project: ImportedProject) {
+  return project.cacheKey ?? `${project.source}:${project.name}:${project.fileCount}`;
+}
+
+function hasFreshScanCache(project: ImportedProject) {
+  try {
+    const cache = JSON.parse(window.localStorage.getItem(scanCacheStorageKey) ?? "{}") as Record<string, number>;
+    const savedAt = cache[projectScanCacheKey(project)];
+    return typeof savedAt === "number" && Date.now() - savedAt < scanCacheLifetime;
+  } catch {
+    return false;
+  }
+}
+
+function rememberScan(project: ImportedProject) {
+  try {
+    const cache = JSON.parse(window.localStorage.getItem(scanCacheStorageKey) ?? "{}") as Record<string, number>;
+    const now = Date.now();
+    const freshEntries = Object.fromEntries(
+      Object.entries(cache).filter(([, savedAt]) => now - savedAt < scanCacheLifetime),
+    );
+    freshEntries[projectScanCacheKey(project)] = now;
+    window.localStorage.setItem(scanCacheStorageKey, JSON.stringify(freshEntries));
+  } catch {
+    // Browsers may disable local storage. Scanning still works without the cache.
+  }
+}
 
 const money = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -38,6 +69,7 @@ export function Dashboard({ startWithImporter = false }: { startWithImporter?: b
   const [knobs, setKnobs] = useState<PricingKnobs>(defaultKnobs);
   const [quantity, setQuantity] = useState(3);
   const [scanning, setScanning] = useState(false);
+  const [scanCacheHit, setScanCacheHit] = useState(false);
   const [scanMessage, setScanMessage] = useState(
     startWithImporter ? "Choose a project source to begin" : "Demo app · Last checked 2 minutes ago",
   );
@@ -57,6 +89,12 @@ export function Dashboard({ startWithImporter = false }: { startWithImporter?: b
         sourceLabel: "Demo app",
       });
   const projectConnected = project.fileCount > 0;
+  const projectReady = projectConnected && !scanning;
+  const scanTimer = useRef<number | null>(null);
+
+  useEffect(() => () => {
+    if (scanTimer.current !== null) window.clearTimeout(scanTimer.current);
+  }, []);
 
   const snapshot = useMemo(() => calculateBusinessSnapshot(knobs), [knobs]);
   const currentOrder = useMemo(
@@ -75,14 +113,26 @@ export function Dashboard({ startWithImporter = false }: { startWithImporter?: b
     setKnobs((current) => ({ ...current, [key]: value }));
   }
 
-  function scan(nextProject: ImportedProject = project) {
+  function scan(nextProject: ImportedProject = project, { force = false } = {}) {
+    if (scanTimer.current !== null) window.clearTimeout(scanTimer.current);
     setProject(nextProject);
-    setScanning(true);
-    setScanMessage(`Reading ${nextProject.fileCount} supported source file${nextProject.fileCount === 1 ? "" : "s"}…`);
-    window.setTimeout(() => {
+
+    if (!force && nextProject.source !== "demo" && hasFreshScanCache(nextProject)) {
       setScanning(false);
-      setScanMessage(`${nextProject.sourceLabel} · ${nextProject.fileCount} source files · checked just now`);
-    }, 1100);
+      setScanCacheHit(true);
+      setScanMessage(`${nextProject.sourceLabel} · ${nextProject.fileCount} source files · loaded from device cache`);
+      return;
+    }
+
+    setScanning(true);
+    setScanCacheHit(false);
+    setScanMessage(`Indexing ${nextProject.fileCount} supported source file${nextProject.fileCount === 1 ? "" : "s"}…`);
+    scanTimer.current = window.setTimeout(() => {
+      rememberScan(nextProject);
+      setScanning(false);
+      setScanMessage(`${nextProject.sourceLabel} · ${nextProject.fileCount} source files · indexing complete`);
+      scanTimer.current = null;
+    }, 1200);
   }
 
   return (
@@ -112,7 +162,7 @@ export function Dashboard({ startWithImporter = false }: { startWithImporter?: b
           </label>
           <button
             className="button secondary"
-            onClick={() => projectConnected ? scan(project) : setImportOpen(true)}
+            onClick={() => projectConnected ? scan(project, { force: true }) : setImportOpen(true)}
             disabled={scanning}
           >
             <span className={scanning ? "scan-icon spinning" : "scan-icon"} aria-hidden="true">
@@ -123,7 +173,7 @@ export function Dashboard({ startWithImporter = false }: { startWithImporter?: b
         </div>
       </div>
 
-      {projectConnected ? <div className="workspace-tabs" role="tablist" aria-label="Workspace views">
+      {projectReady ? <div className="workspace-tabs" role="tablist" aria-label="Workspace views">
         {viewOptions.map((option) => (
           <button
             key={option.id}
@@ -143,16 +193,16 @@ export function Dashboard({ startWithImporter = false }: { startWithImporter?: b
       </div> : null}
 
       <div className="workspace-content">
-        {projectConnected ? <div className="scan-status" role="status" aria-live="polite">
+        {projectConnected ? <div className={scanning ? "scan-status loading" : "scan-status"} role="status" aria-live="polite">
           <span className={scanning ? "status-orb scanning" : "status-orb"} aria-hidden="true">
             {scanning ? "↻" : "✓"}
           </span>
           <div>
-            <strong>{scanning ? "VCAIST is checking your app" : `${project.name} is connected`}</strong>
+            <strong>{scanning ? "VCAIST is indexing your source files" : `${project.name} is ready`}</strong>
             <p>{scanMessage}</p>
           </div>
           <div className="scan-spacer" />
-          <button className="text-button" onClick={() => setImportOpen(true)}>
+          <button className="text-button" onClick={() => setImportOpen(true)} disabled={scanning}>
             Change project source
           </button>
         </div> : (
@@ -167,14 +217,22 @@ export function Dashboard({ startWithImporter = false }: { startWithImporter?: b
           </section>
         )}
 
-        {projectConnected && project.source !== "demo" ? (
-          <div className="prototype-notice" role="note">
-            <strong>{project.name} is connected.</strong>
-            <span>This prototype uses the guided financial controls below while project-specific AI extraction is being completed.</span>
+        {scanning ? <ProjectScanProgress project={project} /> : null}
+
+        {projectReady && project.source !== "demo" ? (
+          <div className="prototype-notice complete" role="note">
+            <span className="notice-complete-icon" aria-hidden="true">✓</span>
+            <div>
+              <strong>Source-file indexing is complete. Nothing is still loading.</strong>
+              <span>Project-specific AI extraction is not available in this prototype. The financial controls below are the guided practice sample, not controls found in {project.name}.</span>
+              <small>{scanCacheHit
+                ? "This folder matched the private cache on this device, so repeat indexing was skipped."
+                : "This project fingerprint is now cached privately on this device for faster repeat loads."}</small>
+            </div>
           </div>
         ) : null}
 
-        {projectConnected && view === "overview" ? (
+        {projectReady && view === "overview" ? (
           <Overview
             snapshot={snapshot}
             knobs={knobs}
@@ -189,12 +247,12 @@ export function Dashboard({ startWithImporter = false }: { startWithImporter?: b
           />
         ) : null}
 
-        {projectConnected && view === "controls" ? (
+        {projectReady && view === "controls" ? (
           <Controls knobs={knobs} updateKnob={updateKnob} snapshot={snapshot} reset={() => setKnobs(defaultKnobs)} />
         ) : null}
 
-        {projectConnected && view === "map" ? <AppMap mode={mapMode} setMode={setMapMode} /> : null}
-        {projectConnected && view === "tests" ? <SafetyTests results={testResults} shippingFee={knobs.shippingFee} /> : null}
+        {projectReady && view === "map" ? <AppMap mode={mapMode} setMode={setMapMode} /> : null}
+        {projectReady && view === "tests" ? <SafetyTests results={testResults} shippingFee={knobs.shippingFee} /> : null}
       </div>
       {importOpen ? (
         <ImportProjectDialog
@@ -206,6 +264,24 @@ export function Dashboard({ startWithImporter = false }: { startWithImporter?: b
         />
       ) : null}
     </AppChrome>
+  );
+}
+
+function ProjectScanProgress({ project }: { project: ImportedProject }) {
+  return (
+    <section className="project-scan-progress" aria-labelledby="scan-progress-title">
+      <div className="scan-progress-symbol" aria-hidden="true"><span /></div>
+      <span className="section-kicker">FIRST-TIME PROJECT INDEX</span>
+      <h2 id="scan-progress-title">Preparing {project.name}</h2>
+      <p>VCAIST is indexing {project.fileCount} supported source file{project.fileCount === 1 ? "" : "s"}. This normally takes only a few seconds.</p>
+      <div className="scan-progress-track" aria-hidden="true"><span /></div>
+      <div className="scan-progress-steps" aria-label="Project indexing progress">
+        <span className="done"><b>✓</b>Folder selected</span>
+        <span className="active"><b>2</b>Indexing source files</span>
+        <span><b>3</b>Ready to explore</span>
+      </div>
+      <small>The unchanged project fingerprint will be cached privately in this browser. Your source files are not stored in the cache.</small>
+    </section>
   );
 }
 

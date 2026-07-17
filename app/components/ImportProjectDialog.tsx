@@ -3,10 +3,10 @@
 import { useEffect, useRef, useState, type ChangeEvent, type InputHTMLAttributes } from "react";
 import {
   cleanProjectName,
-  countSourceFiles,
   isSourcePath,
   parseGitHubRepositoryUrl,
   projectNameFromFiles,
+  summarizeProjectFiles,
   type ImportedProject,
   type ProjectSource,
 } from "@/lib/import-sources";
@@ -80,21 +80,28 @@ export function ImportProjectDialog({
     setError("");
   }
 
-  function importLocalFolder(event: ChangeEvent<HTMLInputElement>) {
+  async function importLocalFolder(event: ChangeEvent<HTMLInputElement>) {
     const files = event.target.files;
     if (!files?.length) return;
 
-    const fileCount = countSourceFiles(files);
+    setBusy(true);
+    setError("");
+    await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+
+    const { fileCount, cacheKey } = summarizeProjectFiles(files);
     if (!fileCount) {
+      setBusy(false);
       setError("That folder does not contain supported source files.");
       return;
     }
 
+    setBusy(false);
     onImport({
       name: projectNameFromFiles(files),
       fileCount,
       source: "local",
       sourceLabel: "Local folder",
+      cacheKey,
     });
   }
 
@@ -128,6 +135,7 @@ export function ImportProjectDialog({
       );
       if (!treeResponse.ok) throwGitHubError(treeResponse.status);
       const treeData = (await treeResponse.json()) as {
+        sha?: string;
         tree: Array<{ path: string; type: string }>;
         truncated?: boolean;
       };
@@ -141,6 +149,7 @@ export function ImportProjectDialog({
         fileCount,
         source: "github",
         sourceLabel: treeData.truncated ? "GitHub · large repository" : "GitHub",
+        cacheKey: `github:${repository.owner}/${repository.repo}:${treeData.sha ?? repoData.default_branch}:${fileCount}`,
       });
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "GitHub could not be reached.");
@@ -170,6 +179,7 @@ export function ImportProjectDialog({
         fileCount,
         source: "google-drive",
         sourceLabel: "Google Drive",
+        cacheKey: `google-drive:${picked.id}:${fileCount}`,
       });
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Google Drive could not be reached.");
@@ -202,6 +212,7 @@ export function ImportProjectDialog({
               className={source === option.id ? "source-option active" : "source-option"}
               key={option.id}
               onClick={() => selectSource(option.id)}
+              disabled={busy}
               role="tab"
               aria-selected={source === option.id}
             >
@@ -221,12 +232,19 @@ export function ImportProjectDialog({
                 className="visually-hidden-input"
                 type="file"
                 multiple
-                onChange={importLocalFolder}
+                onChange={(event) => void importLocalFolder(event)}
                 tabIndex={-1}
               />
               <span className="folder-large" aria-hidden="true">⌁</span>
-              <div><h3>Choose a project folder</h3><p>Source files stay in this browser session and are not published.</p></div>
-              <button className="button dark" onClick={() => folderInput.current?.click()}>Browse folders</button>
+              <div>
+                <h3>{busy ? "Indexing your folder…" : "Choose a project folder"}</h3>
+                <p>{busy
+                  ? "Counting supported source files and creating a private device cache."
+                  : "Source files stay in this browser session. Unchanged folders load faster next time."}</p>
+              </div>
+              <button className="button dark" onClick={() => folderInput.current?.click()} disabled={busy}>
+                {busy ? "Reading files…" : "Browse folders"}
+              </button>
             </div>
           ) : null}
 

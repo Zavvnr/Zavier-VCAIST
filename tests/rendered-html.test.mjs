@@ -11,6 +11,7 @@ import {
   cleanProjectName,
   isSourcePath,
   parseGitHubRepositoryUrl,
+  summarizeProjectFiles,
 } from "../lib/import-sources.ts";
 
 const templateRoot = new URL("../", import.meta.url);
@@ -135,6 +136,20 @@ test("validates folder and GitHub project sources", () => {
   assert.equal(isSourcePath("node_modules/package/index.js"), false);
   assert.equal(isSourcePath("public/photo.png"), false);
   assert.equal(cleanProjectName("my-great_app"), "My Great App");
+});
+
+test("fingerprints local projects so unchanged folders can reuse the scan cache", () => {
+  const original = [
+    { name: "app.ts", webkitRelativePath: "sample/src/app.ts", size: 120, lastModified: 1000 },
+    { name: "photo.png", webkitRelativePath: "sample/public/photo.png", size: 999, lastModified: 1000 },
+  ];
+  const unchanged = original.map((file) => ({ ...file }));
+  const changed = original.map((file, index) => index === 0 ? { ...file, lastModified: 2000 } : { ...file });
+
+  const firstSummary = summarizeProjectFiles(original);
+  assert.equal(firstSummary.fileCount, 1);
+  assert.equal(summarizeProjectFiles(unchanged).cacheKey, firstSummary.cacheKey);
+  assert.notEqual(summarizeProjectFiles(changed).cacheKey, firstSummary.cacheKey);
 });
 
 test("removes the temporary starter preview", async () => {

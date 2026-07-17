@@ -70,7 +70,8 @@ The interface uses a desktop sidebar, fluid content grids, touch-friendly contro
 - **Guided welcome page** — explains what VCAIST is for, walks through its four-step safety loop, and offers both a demo and a direct path into the user's own project.
 - **Direct workspace** — skips the tutorial and demo, opens the project-source chooser immediately, and accepts a local folder, Google Drive folder, or public GitHub repository.
 - **Workspace overview** — business metrics, connection state, model selector, re-scan action, and a live order simulation.
-- **Project importer** — one source chooser for local directories, Google Drive folders, and public GitHub repositories, with source-file filtering and clear connection state.
+- **Project importer** — one source chooser for local directories, Google Drive folders, and public GitHub repositories, with an explicit indexing state and clear completion message.
+- **Device-local scan cache** — fingerprints supported file metadata so an unchanged project can skip repeat indexing on the same browser for 30 days. Source contents are never stored in the cache, and browsers still require the user to select a local folder again for privacy.
 - **Business controls** — four sliders bound to the sample app's price, discount, discount threshold, and shipping fee.
 - **Live sandbox** — re-runs the connected pricing function without touching live customers or production data.
 - **App map** — toggles between a plain-English purchase flow and the corresponding technical path.
@@ -93,7 +94,7 @@ The interface uses a desktop sidebar, fluid content grids, touch-friendly contro
 
 ### Current boundaries
 
-Folder and repository imports are session-only: local files stay in the browser, GitHub imports read the public repository tree, and Google Drive uses an in-memory read-only access token. Extracted business controls still use the bundled ShopSpring fixture. AI-powered repository analysis, durable project storage, private GitHub access, patch generation, and approval-based publishing are the next backend milestones.
+Folder and repository imports are session-only: local files stay in the browser, GitHub imports read the public repository tree, and Google Drive uses an in-memory read-only access token. The interface clearly distinguishes completed source-file indexing from project-specific AI analysis. Extracted business controls still use the bundled ShopSpring fixture; no background AI job continues after indexing finishes. AI-powered repository analysis, durable project storage, private GitHub access, patch generation, and approval-based publishing are the next backend milestones.
 
 ## License
 

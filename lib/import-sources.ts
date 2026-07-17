@@ -5,6 +5,7 @@ export type ImportedProject = {
   fileCount: number;
   source: ProjectSource;
   sourceLabel: string;
+  cacheKey?: string;
 };
 
 const sourceExtensions = new Set([
@@ -67,6 +68,28 @@ export function countSourceFiles(files: FileList | File[]) {
   return Array.from(files).filter((file) =>
     isSourcePath(file.webkitRelativePath || file.name),
   ).length;
+}
+
+export function summarizeProjectFiles(files: FileList | File[]) {
+  let fileCount = 0;
+  let fingerprint = 2166136261;
+
+  for (const file of Array.from(files)) {
+    const path = file.webkitRelativePath || file.name;
+    if (!isSourcePath(path)) continue;
+    fileCount += 1;
+
+    const descriptor = `${path}:${file.size}:${file.lastModified}|`;
+    for (let index = 0; index < descriptor.length; index += 1) {
+      fingerprint ^= descriptor.charCodeAt(index);
+      fingerprint = Math.imul(fingerprint, 16777619);
+    }
+  }
+
+  return {
+    fileCount,
+    cacheKey: `local:${(fingerprint >>> 0).toString(36)}:${fileCount}`,
+  };
 }
 
 export function parseGitHubRepositoryUrl(value: string) {
