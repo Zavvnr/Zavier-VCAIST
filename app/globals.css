@@ -388,6 +388,11 @@ strong {
   border-radius: 10px;
 }
 
+.model-picker select {
+  width: min(380px, 44vw);
+  text-overflow: ellipsis;
+}
+
 .model-dot {
   position: absolute;
   left: 13px;

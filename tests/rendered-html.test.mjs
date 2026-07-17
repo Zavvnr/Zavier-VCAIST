@@ -90,6 +90,11 @@ test("server-renders the interactive financial demo separately", async () => {
   assert.match(html, /GPT-5\.6 Luna/);
   assert.match(html, /Claude Sonnet 5/);
   assert.match(html, /Gemini 3\.5 Flash/);
+  assert.match(html, /Kimi K2\.7 Code/);
+  assert.match(html, /Qwen3\.7 Max/);
+  assert.match(html, /Qwen3\.7 Plus/);
+  assert.match(html, /USD/);
+  assert.match(html, /per 1M tokens/);
   assert.doesNotMatch(html, /Four steps from/);
 });
 
@@ -120,6 +125,9 @@ test("server-renders the help and settings routes", async () => {
   assert.match(settingsHtml, /Claude Sonnet 5/);
   assert.match(settingsHtml, /Gemini 3\.1 Pro/);
   assert.match(settingsHtml, /Gemini 3\.5 Flash/);
+  assert.match(settingsHtml, /Kimi K2\.7 Code/);
+  assert.match(settingsHtml, /Qwen3\.7 Max/);
+  assert.match(settingsHtml, /Qwen3\.7 Plus/);
   assert.match(settingsHtml, /Prices are public list prices/);
 });
 
@@ -129,11 +137,14 @@ test("offers the complete supported model and appearance catalogs", () => {
     "claude-fable-5",
     "gpt-5.6-sol",
     "claude-opus-4.8",
+    "qwen3.7-max",
     "claude-sonnet-5",
     "gemini-3.1-pro",
     "gpt-5.6-terra",
     "gpt-5.4",
     "gemini-3.5-flash",
+    "kimi-k2.7-code",
+    "qwen3.7-plus",
     "gpt-5.6-luna",
     "gpt-5.4-mini",
     "gpt-5.4-nano",
@@ -141,6 +152,8 @@ test("offers the complete supported model and appearance catalogs", () => {
   assert.equal(defaultPreferences.model, "claude-sonnet-5");
   assert.equal(defaultPreferences.theme, "midnight-clay");
   assert.equal(themeOptions.length, 4);
+  assert.ok(modelOptions.every((model) => /^\$[\d.]+ \/ \$[\d.]+$/.test(model.menuPrice)));
+  assert.doesNotMatch(modelOptions.map((model) => model.menuPrice).join(" "), /intro|standard|Sep|>/i);
 });
 
 test("keeps onboarding labels readable in every theme", async () => {

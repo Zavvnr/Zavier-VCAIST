@@ -175,9 +175,9 @@ export function Dashboard({ startWithImporter = false }: { startWithImporter?: b
             <span className="sr-only">AI model</span>
             <select value={model} onChange={(event) => updateModel(event.target.value as ModelId)} aria-label="AI model">
               {modelGroups.map((group) => (
-                <optgroup label={group.label} key={group.label}>
+                <optgroup label={group.menuLabel} key={group.label}>
                   {group.options.map((option) => (
-                    <option value={option.id} key={option.id}>{option.label} · {option.price}</option>
+                    <option value={option.id} key={option.id}>{option.label} · USD {option.menuPrice} per 1M tokens</option>
                   ))}
                 </optgroup>
               ))}

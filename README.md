@@ -48,7 +48,7 @@ If you do not use NVM, install Node.js 24.12 directly, then run the same two npm
 npm test
 ```
 
-No API key or database is required for this prototype. The active model selector groups OpenAI, Anthropic, and Google options into Frontier, Workhorse, and Efficient tiers. Claude Sonnet 5 is the fresh-install default, while GPT-5.6 Terra, Gemini 3.1 Pro, Gemini 3.5 Flash, and GPT-5.4 provide workhorse alternatives. The current product behavior still uses the deterministic ShopSpring demo fixture so the core loop is reliable and testable.
+No API key or database is required for this prototype. The active model selector groups OpenAI, Anthropic, Google, Moonshot AI, and Alibaba Cloud options into Frontier, Workhorse, and Efficient tiers. Claude Sonnet 5 is the fresh-install default, while GPT-5.6 Terra, Gemini 3.1 Pro, Kimi K2.7 Code, Qwen3.7 Plus, Gemini 3.5 Flash, and GPT-5.4 provide workhorse alternatives. Compact dropdown prices use one consistent `USD input / output per 1M tokens` format. The current product behavior still uses the deterministic ShopSpring demo fixture so the core loop is reliable and testable.
 
 ### Optional Google Drive connection
 

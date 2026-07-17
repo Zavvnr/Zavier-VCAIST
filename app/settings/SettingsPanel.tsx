@@ -61,9 +61,9 @@ export function SettingsPanel() {
           <div className="select-wrap">
             <select id="settings-model" value={preferences.model} onChange={(event) => chooseModel(event.target.value as ModelId)}>
               {modelGroups.map((group) => (
-                <optgroup label={group.label} key={group.label}>
+                <optgroup label={group.menuLabel} key={group.label}>
                   {group.options.map((option) => (
-                    <option value={option.id} key={option.id}>{option.label} · {option.price}</option>
+                    <option value={option.id} key={option.id}>{option.label} · USD {option.menuPrice} per 1M tokens</option>
                   ))}
                 </optgroup>
               ))}
@@ -103,7 +103,7 @@ export function SettingsPanel() {
               </section>
             ))}
           </div>
-          <p className="model-pricing-note">Prices are public list prices per 1M input / output tokens, checked July 17, 2026. Provider, platform, batch, and long-context rates can differ.</p>
+          <p className="model-pricing-note">Prices are public list prices per 1M input / output tokens, checked July 17, 2026. The dropdown shows one compact USD rate pair; this comparison keeps relevant promotion, cache-miss, and global-list context. Provider, platform, batch, and long-context rates can differ.</p>
         </section>
 
         <section className="panel settings-section appearance-section">
