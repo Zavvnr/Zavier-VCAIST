@@ -177,7 +177,7 @@ export function Dashboard({ startWithImporter = false }: { startWithImporter?: b
               {modelGroups.map((group) => (
                 <optgroup label={group.label} key={group.label}>
                   {group.options.map((option) => (
-                    <option value={option.id} key={option.id}>{option.label} · {option.detail}</option>
+                    <option value={option.id} key={option.id}>{option.label} · {option.price}</option>
                   ))}
                 </optgroup>
               ))}

@@ -48,7 +48,7 @@ If you do not use NVM, install Node.js 24.12 directly, then run the same two npm
 npm test
 ```
 
-No API key or database is required for this prototype. The active model selector includes the current GPT-5.6 family and GPT-5.4 compatibility choices, but the current product behavior uses the deterministic ShopSpring demo fixture so the core loop is reliable and testable.
+No API key or database is required for this prototype. The active model selector groups OpenAI, Anthropic, and Google options into Frontier, Workhorse, and Efficient tiers. Claude Sonnet 5 is the fresh-install default, while GPT-5.6 Terra, Gemini 3.1 Pro, Gemini 3.5 Flash, and GPT-5.4 provide workhorse alternatives. The current product behavior still uses the deterministic ShopSpring demo fixture so the core loop is reliable and testable.
 
 ### Optional Google Drive connection
 
@@ -69,7 +69,7 @@ The interface uses a desktop sidebar, fluid content grids, touch-friendly contro
 
 - **Guided welcome page** — explains what VCAIST is for, walks through its four-step safety loop, and offers both a demo and a direct path into the user's own project.
 - **Direct workspace** — skips the tutorial and demo, opens the project-source chooser immediately, and accepts a local folder, Google Drive folder, or public GitHub repository.
-- **Workspace overview** — business metrics, connection state, a persistent multi-model selector, re-scan action, and a live order simulation.
+- **Workspace overview** — business metrics, connection state, a persistent cross-provider model selector, re-scan action, and a live order simulation.
 - **Project importer** — one source chooser for local directories, Google Drive folders, and public GitHub repositories, with an explicit indexing state and clear completion message.
 - **Device-local scan cache** — fingerprints supported file metadata so an unchanged project can skip repeat indexing on the same browser for 30 days. Source contents are never stored in the cache, and browsers still require the user to select a local folder again for privacy.
 - **Business controls** — four sliders bound to the sample app's price, discount, discount threshold, and shipping fee.
@@ -77,7 +77,7 @@ The interface uses a desktop sidebar, fluid content grids, touch-friendly contro
 - **App map** — toggles between a plain-English purchase flow and the corresponding technical path.
 - **Safety tests** — runs five boundary scenarios and exposes the zero-quantity negative-total defect with relevant code and a proposed remedy.
 - **Help center** — quick-start instructions and plain-language answers to common trust and safety questions.
-- **Settings** — model selection, scan behavior, test coverage, explanation preferences, and four persistent color themes saved locally on the device. Midnight Clay is the black-background default, with Midnight Sky, Forest Mint, and Warm Light alternatives.
+- **Settings** — a tiered model-and-price comparison, scan behavior, test coverage, explanation preferences, and four persistent color themes saved locally on the device. Midnight Clay is the black-background default, with Midnight Sky, Forest Mint, and Warm Light alternatives. Model prices are presented per one million input/output tokens and include a visible date and provider-pricing caveat.
 
 ### Implementation
 

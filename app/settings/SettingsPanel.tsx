@@ -5,6 +5,7 @@ import {
   applyTheme,
   defaultPreferences,
   modelGroups,
+  modelOptions,
   readPreferences,
   themeOptions,
   writePreferences,
@@ -18,6 +19,7 @@ type TogglePreference = "autoScan" | "showTechnical" | "testBoundaries" | "plain
 export function SettingsPanel() {
   const [preferences, setPreferences] = useState<Preferences>(defaultPreferences);
   const [saved, setSaved] = useState(false);
+  const activeModel = modelOptions.find((option) => option.id === preferences.model) ?? modelOptions[0];
 
   useEffect(() => {
     const stored = readPreferences();
@@ -61,13 +63,47 @@ export function SettingsPanel() {
               {modelGroups.map((group) => (
                 <optgroup label={group.label} key={group.label}>
                   {group.options.map((option) => (
-                    <option value={option.id} key={option.id}>{option.label} · {option.detail}</option>
+                    <option value={option.id} key={option.id}>{option.label} · {option.price}</option>
                   ))}
                 </optgroup>
               ))}
             </select>
           </div>
-          <div className="model-note"><span aria-hidden="true">i</span><p>GPT-5.6 Sol is the default. Model selection is saved on this device; the current prototype still uses the deterministic practice fixture.</p></div>
+          <div className="active-model-summary" aria-live="polite">
+            <div>
+              <span>{activeModel.provider} · {activeModel.detail}</span>
+              <strong>{activeModel.label}</strong>
+            </div>
+            <b>{activeModel.price}</b>
+            <p>{activeModel.verdict}</p>
+          </div>
+          <div className="model-note"><span aria-hidden="true">i</span><p>Claude Sonnet 5 is the fresh-install default. Your choice is saved on this device; the prototype still uses the deterministic practice fixture.</p></div>
+          <div className="model-catalog" aria-label="Available AI models">
+            {modelGroups.map((group) => (
+              <section className="model-tier" key={group.label}>
+                <h3>{group.label}</h3>
+                <div className="model-tier-rows">
+                  {group.options.map((option) => (
+                    <button
+                      type="button"
+                      className={preferences.model === option.id ? "model-catalog-row active" : "model-catalog-row"}
+                      key={option.id}
+                      onClick={() => chooseModel(option.id)}
+                      aria-pressed={preferences.model === option.id}
+                    >
+                      <span className="model-catalog-name">
+                        <strong>{option.label}</strong>
+                        <small>{option.provider}{option.recommended ? " · Recommended" : ""}</small>
+                      </span>
+                      <span className="model-catalog-price">{option.price}</span>
+                      <span className="model-catalog-verdict">{option.verdict}</span>
+                    </button>
+                  ))}
+                </div>
+              </section>
+            ))}
+          </div>
+          <p className="model-pricing-note">Prices are public list prices per 1M input / output tokens, checked July 17, 2026. Provider, platform, batch, and long-context rates can differ.</p>
         </section>
 
         <section className="panel settings-section appearance-section">

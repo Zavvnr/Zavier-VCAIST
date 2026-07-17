@@ -88,6 +88,8 @@ test("server-renders the interactive financial demo separately", async () => {
   assert.match(html, /GPT-5\.6 Sol/);
   assert.match(html, /GPT-5\.6 Terra/);
   assert.match(html, /GPT-5\.6 Luna/);
+  assert.match(html, /Claude Sonnet 5/);
+  assert.match(html, /Gemini 3\.5 Flash/);
   assert.doesNotMatch(html, /Four steps from/);
 });
 
@@ -111,18 +113,32 @@ test("server-renders the help and settings routes", async () => {
   assert.match(settingsHtml, /Color &amp; appearance/);
   assert.match(settingsHtml, /Midnight Clay/);
   assert.match(settingsHtml, /Midnight Sky/);
+  assert.match(settingsHtml, /Frontier · capable, usually overkill/);
+  assert.match(settingsHtml, /Workhorse · recommended for VCAIST/);
+  assert.match(settingsHtml, /GPT-5\.5 Pro/);
+  assert.match(settingsHtml, /Claude Fable 5/);
+  assert.match(settingsHtml, /Claude Sonnet 5/);
+  assert.match(settingsHtml, /Gemini 3\.1 Pro/);
+  assert.match(settingsHtml, /Gemini 3\.5 Flash/);
+  assert.match(settingsHtml, /Prices are public list prices/);
 });
 
 test("offers the complete supported model and appearance catalogs", () => {
   assert.deepEqual(modelOptions.map((model) => model.id), [
+    "gpt-5.5-pro",
+    "claude-fable-5",
     "gpt-5.6-sol",
+    "claude-opus-4.8",
+    "claude-sonnet-5",
+    "gemini-3.1-pro",
     "gpt-5.6-terra",
-    "gpt-5.6-luna",
     "gpt-5.4",
+    "gemini-3.5-flash",
+    "gpt-5.6-luna",
     "gpt-5.4-mini",
     "gpt-5.4-nano",
   ]);
-  assert.equal(defaultPreferences.model, "gpt-5.6-sol");
+  assert.equal(defaultPreferences.model, "claude-sonnet-5");
   assert.equal(defaultPreferences.theme, "midnight-clay");
   assert.equal(themeOptions.length, 4);
 });
