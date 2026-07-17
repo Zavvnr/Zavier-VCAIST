@@ -17,9 +17,11 @@ const destinations: Array<{
 export function AppChrome({
   active,
   children,
+  project = { name: "ShopSpring", sourceLabel: "Demo app" },
 }: {
   active: Destination;
   children: ReactNode;
+  project?: { name: string; sourceLabel: string };
 }) {
   return (
     <div className="app-shell">
@@ -31,10 +33,10 @@ export function AppChrome({
 
         <div className="side-label">YOUR APP</div>
         <div className="project-chip">
-          <span className="project-avatar" aria-hidden="true">S</span>
+          <span className="project-avatar" aria-hidden="true">{project.name.charAt(0).toUpperCase()}</span>
           <span className="project-chip-copy">
-            <strong>ShopSpring</strong>
-            <small>Connected</small>
+            <strong>{project.name}</strong>
+            <small>{project.sourceLabel}</small>
           </span>
           <span className="live-dot" aria-label="Connected" />
         </div>

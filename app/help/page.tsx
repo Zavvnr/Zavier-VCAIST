@@ -40,11 +40,11 @@ export default function HelpPage() {
           <div>
             <span className="help-badge">QUICK START · 3 MINUTES</span>
             <h2>Your first VCAIST check</h2>
-            <p>Connect a few project files, review the controls VCAIST finds, then move one slider to see the outcome.</p>
+            <p>Choose a local folder, Google Drive folder, or GitHub repository, review the controls VCAIST finds, then move one slider to see the outcome.</p>
             <Link className="button dark link-button" href="/">Open my workspace <span aria-hidden="true">→</span></Link>
           </div>
           <div className="help-steps" aria-label="Quick-start steps">
-            <div><span>1</span><p><strong>Choose project files</strong>Start with pricing or checkout code.</p></div>
+            <div><span>1</span><p><strong>Choose where your project lives</strong>Use a local folder, Drive, or GitHub.</p></div>
             <div><span>2</span><p><strong>Review the plain-English map</strong>See what each part affects.</p></div>
             <div><span>3</span><p><strong>Try a safe simulation</strong>Your real app stays untouched.</p></div>
           </div>

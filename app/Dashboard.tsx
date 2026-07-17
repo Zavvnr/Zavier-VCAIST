@@ -1,7 +1,9 @@
 "use client";
 
-import { useMemo, useRef, useState, type CSSProperties } from "react";
+import { useMemo, useState, type CSSProperties } from "react";
 import { AppChrome } from "./components/AppChrome";
+import { ImportProjectDialog } from "./components/ImportProjectDialog";
+import type { ImportedProject } from "@/lib/import-sources";
 import {
   calculateBusinessSnapshot,
   defaultKnobs,
@@ -36,9 +38,15 @@ export function Dashboard() {
   const [knobs, setKnobs] = useState<PricingKnobs>(defaultKnobs);
   const [quantity, setQuantity] = useState(3);
   const [scanning, setScanning] = useState(false);
-  const [scanMessage, setScanMessage] = useState("Last checked 2 minutes ago");
+  const [scanMessage, setScanMessage] = useState("Demo app · Last checked 2 minutes ago");
   const [mapMode, setMapMode] = useState<"plain" | "technical">("plain");
-  const fileInput = useRef<HTMLInputElement>(null);
+  const [importOpen, setImportOpen] = useState(false);
+  const [project, setProject] = useState<ImportedProject>({
+    name: "ShopSpring",
+    fileCount: 27,
+    source: "demo",
+    sourceLabel: "Demo app",
+  });
 
   const snapshot = useMemo(() => calculateBusinessSnapshot(knobs), [knobs]);
   const currentOrder = useMemo(
@@ -57,29 +65,22 @@ export function Dashboard() {
     setKnobs((current) => ({ ...current, [key]: value }));
   }
 
-  function scan(files?: FileList | null) {
+  function scan(nextProject: ImportedProject = project) {
+    setProject(nextProject);
     setScanning(true);
-    setScanMessage(
-      files?.length
-        ? `Reading ${files.length} project file${files.length === 1 ? "" : "s"}…`
-        : "Re-running 5 real-world scenarios…",
-    );
+    setScanMessage(`Reading ${nextProject.fileCount} supported source file${nextProject.fileCount === 1 ? "" : "s"}…`);
     window.setTimeout(() => {
       setScanning(false);
-      setScanMessage(
-        files?.length
-          ? `${files.length} files checked just now`
-          : "All project rules checked just now",
-      );
+      setScanMessage(`${nextProject.sourceLabel} · ${nextProject.fileCount} source files · checked just now`);
     }, 1100);
   }
 
   return (
-    <AppChrome active="workspace">
+    <AppChrome active="workspace" project={project}>
       <div className="workspace-header">
         <div>
           <div className="eyebrow-row">
-            <span>ShopSpring</span><span aria-hidden="true">/</span><span>Pricing engine</span>
+            <span>{project.name}</span><span aria-hidden="true">/</span><span>Project scan</span>
           </div>
           <h1>Your app control room</h1>
           <p>See what matters, try changes safely, and catch surprises early.</p>
@@ -92,7 +93,7 @@ export function Dashboard() {
               <option value="vcaist-core">VCAIST Core · GPT-5.4</option>
             </select>
           </label>
-          <button className="button secondary" onClick={() => scan()} disabled={scanning}>
+          <button className="button secondary" onClick={() => scan(project)} disabled={scanning}>
             <span className={scanning ? "scan-icon spinning" : "scan-icon"} aria-hidden="true">↻</span>
             {scanning ? "Checking…" : "Check again"}
           </button>
@@ -124,21 +125,12 @@ export function Dashboard() {
             {scanning ? "↻" : "✓"}
           </span>
           <div>
-            <strong>{scanning ? "VCAIST is checking your app" : "Your app is connected"}</strong>
+            <strong>{scanning ? "VCAIST is checking your app" : `${project.name} is connected`}</strong>
             <p>{scanMessage}</p>
           </div>
           <div className="scan-spacer" />
-          <input
-            ref={fileInput}
-            className="visually-hidden-input"
-            type="file"
-            multiple
-            accept=".js,.jsx,.ts,.tsx,.py,.json,.yaml,.yml,.toml"
-            onChange={(event) => scan(event.target.files)}
-            tabIndex={-1}
-          />
-          <button className="text-button" onClick={() => fileInput.current?.click()}>
-            Choose different files
+          <button className="text-button" onClick={() => setImportOpen(true)}>
+            Change project source
           </button>
         </div>
 
@@ -164,6 +156,15 @@ export function Dashboard() {
         {view === "map" ? <AppMap mode={mapMode} setMode={setMapMode} /> : null}
         {view === "tests" ? <SafetyTests results={testResults} shippingFee={knobs.shippingFee} /> : null}
       </div>
+      {importOpen ? (
+        <ImportProjectDialog
+          onClose={() => setImportOpen(false)}
+          onImport={(nextProject) => {
+            setImportOpen(false);
+            scan(nextProject);
+          }}
+        />
+      ) : null}
     </AppChrome>
   );
 }

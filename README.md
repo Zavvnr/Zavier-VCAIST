@@ -8,6 +8,7 @@ The current prototype demonstrates the complete product loop with a sample comme
 
 - Explains an app's workflow as both a plain-English map and a technical map.
 - Finds adjustable business values such as prices, discounts, thresholds, and fees.
+- Lets users choose a local project folder, a Google Drive folder, or a public GitHub repository as the project source.
 - Connects those values to responsive controls that re-run the sample app logic immediately.
 - Stress-tests awkward inputs and translates failures into business impact.
 - Keeps humans in the loop. This prototype never publishes a code change.
@@ -49,6 +50,10 @@ npm test
 
 No API key or database is required for this prototype. The active model selector is present, but the current product behavior uses the deterministic ShopSpring demo fixture so the core loop is reliable and testable.
 
+### Optional Google Drive connection
+
+Local folders and public GitHub repositories work without credentials. Google Drive uses Google's read-only Picker flow and needs three public identifiers from a Google Cloud project. Copy `.env.example` to `.env.local`, fill in the values, enable the Google Picker and Drive APIs, and add your local and deployed origins to the OAuth client. No OAuth client secret belongs in the browser environment.
+
 ### Hardware
 
 - Minimum: dual-core CPU, 4 GB RAM, and 300 MB free disk space
@@ -63,6 +68,7 @@ The interface uses a desktop sidebar, fluid content grids, touch-friendly contro
 ### User-facing product
 
 - **Workspace overview** — business metrics, connection state, model selector, re-scan action, and a live order simulation.
+- **Project importer** — one source chooser for local directories, Google Drive folders, and public GitHub repositories, with source-file filtering and clear connection state.
 - **Business controls** — four sliders bound to the sample app's price, discount, discount threshold, and shipping fee.
 - **Live sandbox** — re-runs the connected pricing function without touching live customers or production data.
 - **App map** — toggles between a plain-English purchase flow and the corresponding technical path.
@@ -82,7 +88,7 @@ The interface uses a desktop sidebar, fluid content grids, touch-friendly contro
 
 ### Current boundaries
 
-File selection demonstrates the connection and scan experience, while extracted controls currently use the bundled ShopSpring fixture. AI-powered repository analysis, durable project storage, patch generation, and approval-based publishing are the next backend milestones. The UI labels these future actions instead of pretending they are live.
+Folder and repository imports are session-only: local files stay in the browser, GitHub imports read the public repository tree, and Google Drive uses an in-memory read-only access token. Extracted business controls still use the bundled ShopSpring fixture. AI-powered repository analysis, durable project storage, private GitHub access, patch generation, and approval-based publishing are the next backend milestones.
 
 ## License
 

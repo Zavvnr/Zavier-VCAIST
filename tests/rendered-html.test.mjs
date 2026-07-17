@@ -7,6 +7,11 @@ import {
   runSamplePricing,
   stressTest,
 } from "../lib/pricing.ts";
+import {
+  cleanProjectName,
+  isSourcePath,
+  parseGitHubRepositoryUrl,
+} from "../lib/import-sources.ts";
 
 const templateRoot = new URL("../", import.meta.url);
 
@@ -40,6 +45,7 @@ test("server-renders the interactive VCAIST workspace", async () => {
   assert.match(html, /<title>VCAIST — Understand your app<\/title>/i);
   assert.match(html, /Your app control room/);
   assert.match(html, /Business controls/);
+  assert.match(html, /Change project source/);
   assert.match(html, /A zero-item order pays the customer/);
   assert.match(html, /VCAIST Core · GPT-5\.4/);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton|Your site is taking shape/i);
@@ -82,6 +88,22 @@ test("business snapshot changes when a discovered control changes", () => {
   const changed = calculateBusinessSnapshot({ ...defaultKnobs, basePrice: 60 });
   assert.ok(changed.revenue > original.revenue);
   assert.notEqual(changed.averageOrder, original.averageOrder);
+});
+
+test("validates folder and GitHub project sources", () => {
+  assert.deepEqual(parseGitHubRepositoryUrl("https://github.com/openai/codex.git"), {
+    owner: "openai",
+    repo: "codex",
+  });
+  assert.deepEqual(parseGitHubRepositoryUrl("github.com/example/my-app/tree/main"), {
+    owner: "example",
+    repo: "my-app",
+  });
+  assert.equal(parseGitHubRepositoryUrl("https://example.com/owner/repo"), null);
+  assert.equal(isSourcePath("src/components/App.tsx"), true);
+  assert.equal(isSourcePath("node_modules/package/index.js"), false);
+  assert.equal(isSourcePath("public/photo.png"), false);
+  assert.equal(cleanProjectName("my-great_app"), "My Great App");
 });
 
 test("removes the temporary starter preview", async () => {
