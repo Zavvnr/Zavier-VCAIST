@@ -9,7 +9,7 @@ const destinations: Array<{
   label: string;
   symbol: string;
 }> = [
-  { id: "workspace", href: "/", label: "Workspace", symbol: "⌂" },
+  { id: "workspace", href: "/demo", label: "Demo workspace", symbol: "⌂" },
   { id: "help", href: "/help", label: "Help center", symbol: "?" },
   { id: "settings", href: "/settings", label: "Settings", symbol: "⚙" },
 ];
@@ -84,7 +84,7 @@ export function AppChrome({
             aria-current={active === item.id ? "page" : undefined}
           >
             <span aria-hidden="true">{item.symbol}</span>
-            {item.id === "workspace" ? "Home" : item.label.replace(" center", "")}
+            {item.id === "workspace" ? "Demo" : item.label.replace(" center", "")}
           </Link>
         ))}
       </nav>

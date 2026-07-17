@@ -36,19 +36,32 @@ async function render(pathname = "/") {
   );
 }
 
-test("server-renders the interactive VCAIST workspace", async () => {
+test("server-renders the VCAIST tutorial as the home page", async () => {
   const response = await render();
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
 
   const html = await response.text();
-  assert.match(html, /<title>VCAIST — Understand your app<\/title>/i);
+  assert.match(html, /<title>Welcome · VCAIST<\/title>/i);
+  assert.match(html, /Understand the app you built/);
+  assert.match(html, /Four steps from/);
+  assert.match(html, /Take the financial demo/);
+  assert.match(html, /href="\/demo"/);
+  assert.doesNotMatch(html, /codex-preview|react-loading-skeleton|Your site is taking shape/i);
+});
+
+test("server-renders the interactive financial demo separately", async () => {
+  const response = await render("/demo");
+  assert.equal(response.status, 200);
+
+  const html = await response.text();
+  assert.match(html, /<title>Financial demo · VCAIST<\/title>/i);
   assert.match(html, /Your app control room/);
   assert.match(html, /Business controls/);
   assert.match(html, /Change project source/);
   assert.match(html, /A zero-item order pays the customer/);
   assert.match(html, /VCAIST Core · GPT-5\.4/);
-  assert.doesNotMatch(html, /codex-preview|react-loading-skeleton|Your site is taking shape/i);
+  assert.doesNotMatch(html, /Four steps from/);
 });
 
 test("server-renders the help and settings routes", async () => {
