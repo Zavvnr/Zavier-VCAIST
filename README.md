@@ -23,12 +23,25 @@ The current prototype demonstrates the complete product loop with a sample comme
 
 ### Local setup
 
+This is a Node.js application, so its virtual environment is the pinned Node runtime plus the project-local `node_modules` directory. It does not need a Python `.venv`.
+
+With NVM installed, create and select the pinned runtime:
+
 ```bash
-npm install
+nvm install 24.12.0
+nvm use 24.12.0
+```
+
+Then create the isolated project dependencies and start VCAIST:
+
+```bash
+npm run setup:local
 npm run dev
 ```
 
-Open the local address printed by the development server. To verify a production build and run the automated tests:
+Open the local address printed by the development server, normally `http://localhost:3000`. Future runs only need `nvm use` and `npm run dev`.
+
+If you do not use NVM, install Node.js 24.12 directly, then run the same two npm commands. To verify a production build and run the automated tests:
 
 ```bash
 npm test
