@@ -21,6 +21,38 @@ import {
 
 type WorkspaceView = "overview" | "controls" | "map" | "tests";
 
+const workspaceViewGuides: Record<WorkspaceView, {
+  eyebrow: string;
+  title: string;
+  description: string;
+  actions: readonly string[];
+}> = {
+  overview: {
+    eyebrow: "OVERVIEW · START HERE",
+    title: "Start with the big picture",
+    description: "This page turns the latest project check into a quick summary: connection status, business results, a live pricing simulation, the most important surprise, and a guide to everything VCAIST can do.",
+    actions: ["Check app health", "Try a sample order", "Choose what to inspect next"],
+  },
+  controls: {
+    eyebrow: "CONTROLS · SAFE EXPERIMENTS",
+    title: "See which business rules move the numbers",
+    description: "This page gathers prices, discounts, thresholds, and fees into safe controls. Change one value at a time and watch the forecast update without editing source code or affecting live customers.",
+    actions: ["Adjust one rule", "Watch the forecast change", "Reset the sample safely"],
+  },
+  map: {
+    eyebrow: "APP MAP · FOLLOW THE FLOW",
+    title: "Follow one customer action through the app",
+    description: "This page connects the plain-English customer journey to the files, functions, APIs, and services that respond. Use it to understand where a business rule lives and what else it can affect.",
+    actions: ["Read the customer journey", "Switch to technical view", "Trace business impact"],
+  },
+  tests: {
+    eyebrow: "SAFETY TESTS · CATCH SURPRISES",
+    title: "Understand edge cases before customers find them",
+    description: "This page runs awkward inputs against the real pricing function, shows the actual outputs, and explains failed cases in business language before presenting a possible remedy for review.",
+    actions: ["Review real outputs", "See why a test failed", "Consider a safe remedy"],
+  },
+};
+
 const scanCacheStorageKey = "vcaist-project-scan-cache-v1";
 const scanCacheLifetime = 30 * 24 * 60 * 60 * 1000;
 
@@ -216,6 +248,8 @@ export function Dashboard({ startWithImporter = false }: { startWithImporter?: b
       </div> : null}
 
       <div className="workspace-content">
+        {projectReady ? <WorkspaceViewIntroduction view={view} /> : null}
+
         {projectConnected ? <div className={scanning ? "scan-status loading" : "scan-status"} role="status" aria-live="polite">
           <span className={scanning ? "status-orb scanning" : "status-orb"} aria-hidden="true">
             {scanning ? "↻" : "✓"}
@@ -287,6 +321,31 @@ export function Dashboard({ startWithImporter = false }: { startWithImporter?: b
         />
       ) : null}
     </AppChrome>
+  );
+}
+
+function WorkspaceViewIntroduction({ view }: { view: WorkspaceView }) {
+  const guide = workspaceViewGuides[view];
+
+  return (
+    <section
+      className={`view-introduction ${view}`}
+      aria-labelledby={`view-introduction-${view}`}
+      aria-live="polite"
+      aria-atomic="true"
+    >
+      <span className="view-introduction-mark" aria-hidden="true">
+        {view === "overview" ? "◎" : view === "controls" ? "↔" : view === "map" ? "⌁" : "!"}
+      </span>
+      <div className="view-introduction-copy">
+        <span className="view-introduction-eyebrow">{guide.eyebrow}</span>
+        <h2 id={`view-introduction-${view}`}>{guide.title}</h2>
+        <p>{guide.description}</p>
+      </div>
+      <ul className="view-introduction-actions" aria-label="What you can do on this page">
+        {guide.actions.map((action) => <li key={action}>{action}</li>)}
+      </ul>
+    </section>
   );
 }
 

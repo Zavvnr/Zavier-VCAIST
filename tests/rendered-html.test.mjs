@@ -82,6 +82,9 @@ test("server-renders the interactive financial demo separately", async () => {
   const html = await response.text();
   assert.match(html, /<title>Financial demo · VCAIST<\/title>/i);
   assert.match(html, /Your app control room/);
+  assert.match(html, /Start with the big picture/);
+  assert.match(html, /Check app health/);
+  assert.match(html, /Try a sample order/);
   assert.match(html, /Business controls/);
   assert.match(html, /Change project source/);
   assert.match(html, /A zero-item order pays the customer/);
@@ -171,6 +174,15 @@ test("uses semantic, high-contrast surfaces throughout every theme", async () =>
   assert.match(css, /\.issue-panel \{[\s\S]*?var\(--coral-soft\)[\s\S]*?var\(--surface\)/);
   assert.match(css, /\.program-feature-grid article \{[\s\S]*?background: var\(--surface-soft\);/);
   assert.match(css, /--line-strong: #7c8982;/);
+});
+
+test("explains every workspace view immediately below its tab", async () => {
+  const source = await readFile(new URL("../app/Dashboard.tsx", import.meta.url), "utf8");
+  assert.match(source, /Start with the big picture/);
+  assert.match(source, /See which business rules move the numbers/);
+  assert.match(source, /Follow one customer action through the app/);
+  assert.match(source, /Understand edge cases before customers find them/);
+  assert.match(source, /<WorkspaceViewIntroduction view=\{view\} \/>/);
 });
 
 test("pricing sandbox exposes the sample app's real zero-quantity defect", () => {

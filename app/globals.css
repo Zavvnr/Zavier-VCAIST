@@ -532,6 +532,104 @@ strong {
   padding: 22px clamp(24px, 3vw, 46px) 46px;
 }
 
+.view-introduction {
+  --view-accent: var(--green);
+  --view-soft: var(--green-soft);
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) minmax(210px, 0.52fr);
+  align-items: start;
+  gap: 16px;
+  margin-bottom: 16px;
+  padding: 20px 21px;
+  background: linear-gradient(135deg, var(--view-soft), var(--surface) 62%);
+  border: 1px solid color-mix(in srgb, var(--view-accent) 32%, var(--line));
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+}
+
+.view-introduction.controls {
+  --view-accent: var(--amber);
+  --view-soft: var(--amber-soft);
+}
+
+.view-introduction.map {
+  --view-accent: var(--blue);
+  --view-soft: var(--blue-soft);
+}
+
+.view-introduction.tests {
+  --view-accent: var(--coral);
+  --view-soft: var(--coral-soft);
+}
+
+.view-introduction-mark {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  color: var(--accent-contrast);
+  font-size: 17px;
+  font-weight: 850;
+  background: var(--view-accent);
+  border-radius: 13px 13px 13px 4px;
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--view-accent) 24%, transparent);
+}
+
+.view-introduction-eyebrow {
+  display: block;
+  margin: 1px 0 6px;
+  color: var(--view-accent);
+  font-size: 8px;
+  font-weight: 850;
+  letter-spacing: 0.11em;
+}
+
+.view-introduction-copy h2 {
+  font-size: clamp(18px, 2vw, 23px);
+  line-height: 1.15;
+}
+
+.view-introduction-copy p {
+  max-width: 760px;
+  margin: 7px 0 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.62;
+}
+
+.view-introduction-actions {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.view-introduction-actions li {
+  position: relative;
+  min-height: 30px;
+  padding: 8px 10px 8px 28px;
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1.4;
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.view-introduction-actions li::before {
+  position: absolute;
+  top: 50%;
+  left: 11px;
+  width: 7px;
+  height: 7px;
+  content: "";
+  background: var(--view-accent);
+  border-radius: 50%;
+  transform: translateY(-50%);
+}
+
 .scan-status {
   display: flex;
   align-items: center;
@@ -4092,6 +4190,8 @@ strong {
 }
 
 @media (max-width: 900px) {
+  .view-introduction { grid-template-columns: 44px minmax(0, 1fr); }
+  .view-introduction-actions { grid-column: 2; grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .program-feature-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .story-copy ol { grid-template-columns: 1fr; }
   .welcome-nav { width: min(100% - 36px, 720px); }
@@ -4150,6 +4250,9 @@ strong {
 }
 
 @media (max-width: 640px) {
+  .view-introduction { grid-template-columns: 38px minmax(0, 1fr); gap: 12px; padding: 17px; }
+  .view-introduction-mark { width: 38px; height: 38px; font-size: 15px; }
+  .view-introduction-actions { grid-column: 1 / -1; grid-template-columns: 1fr; }
   .program-overview { padding: 20px 17px; }
   .program-overview-heading { flex-direction: column; gap: 13px; }
   .program-overview-copy, .program-feature-grid { grid-template-columns: 1fr; }
