@@ -185,6 +185,16 @@ test("explains every workspace view immediately below its tab", async () => {
   assert.match(source, /<WorkspaceViewIntroduction view=\{view\} \/>/);
 });
 
+test("preserves the original README roadmap and core-loop brief", async () => {
+  const readme = await readFile(new URL("../README.md", import.meta.url), "utf8");
+  assert.match(readme, /## What comes After/);
+  assert.match(readme, /dynamic user interface that is easy to understand/);
+  assert.match(readme, /help page and settings page/);
+  assert.match(readme, /## Example of Core Loop/);
+  assert.match(readme, /built backwards from the emotional moment/);
+  assert.match(readme, /quantity 0 it charges negative money/);
+});
+
 test("pricing sandbox exposes the sample app's real zero-quantity defect", () => {
   const emptyOrder = runSamplePricing(0, defaultKnobs);
   assert.equal(emptyOrder.total, -6.99);

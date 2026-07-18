@@ -97,6 +97,24 @@ The interface uses a desktop sidebar, fluid content grids, touch-friendly contro
 
 Folder and repository imports are session-only: local files stay in the browser, GitHub imports read the public repository tree, and Google Drive uses an in-memory read-only access token. The interface clearly distinguishes completed source-file indexing from project-specific AI analysis. Extracted business controls still use the bundled ShopSpring fixture; no background AI job continues after indexing finishes. AI-powered repository analysis, durable project storage, private GitHub access, patch generation, and approval-based publishing are the next backend milestones.
 
+## What comes After
+
+The original product direction remains part of the project brief:
+
+> Implement the application and testing, with a dynamic user interface that is easy to understand. The interface should be adjustable relative to the hardware (e.g. phone, laptop, etc.). Take a look at the example demo below in the **Example of Core Loop** section. That is one of the examples of using the application. The application should also include a help page and settings page. As for now, it is okay for the application to work under **one** AI model, but the dropdown for choosing the AI model should be there.
+
+The current prototype has completed the responsive interface, Help center, Settings, model dropdown, deterministic sandbox, and automated test foundation described above. The next milestones are:
+
+- Replace the bundled ShopSpring extraction fixture with project-specific AI analysis.
+- Add durable project storage and private-repository support while preserving explicit user consent.
+- Generate reviewable patch proposals and require approval before publishing any code change.
+- Expand the sandbox beyond the sample pricing function to safely execute more project-specific business logic.
+- Add broader integration, accessibility, security, and device testing as the backend capabilities grow.
+
+## Example of Core Loop
+
+The demoable core loop is built backwards from the emotional moment: a non-technical user points the tool at their app → the model scans it and extracts the "knobs" (constants, thresholds, and configuration such as discount rate, late fee, or shipping cost) into a manifest → VCAIST generates a dashboard with sliders bound to those knobs → dragging a slider re-runs the real code in a sandbox and the numbers move → then the kicker: "The AI stress-tested your pricing function and found that at quantity 0 it charges negative money—here is the actual crash." A slider moves, revenue changes, a real bug surfaces, and VCAIST provides a plain-English explanation.
+
 ## License
 
 Released under the MIT License. See `LICENSE`.
