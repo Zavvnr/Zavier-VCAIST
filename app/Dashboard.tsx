@@ -419,7 +419,76 @@ function Overview({
           <CompactKnob label="Shipping fee" value={preciseMoney.format(knobs.shippingFee)} min={0} max={15} step={0.5} current={knobs.shippingFee} onChange={(value) => updateKnob("shippingFee", value)} color="amber" />
         </div>
       </section>
+
+      <ProgramOverview />
     </div>
+  );
+}
+
+const programFeatures = [
+  ["Choose your source", "Start with a local folder, a Google Drive folder, or a public GitHub repository."],
+  ["Index files clearly", "See an explicit first-load progress state, completion message, and faster repeat checks for unchanged folders."],
+  ["Compare AI models", "Choose among Frontier, Workhorse, and Efficient models from OpenAI, Anthropic, Google, Moonshot AI, and Alibaba Cloud."],
+  ["Find business controls", "Surface prices, fees, discounts, thresholds, and other values that affect how the app behaves."],
+  ["Experiment safely", "Move responsive sliders and re-run the sample app logic in a private sandbox without touching live customers."],
+  ["Follow the app map", "Switch between a plain-English customer journey and the corresponding technical files and functions."],
+  ["Stress-test edge cases", "Try zero, boundary, and unusually large inputs, then translate failures into understandable business impact."],
+  ["Keep human approval", "Review explanations and proposed remedies first. This prototype never publishes a code change automatically."],
+  ["Adjust the experience", "Use the Help center, persistent settings, four accessible color themes, and responsive phone or desktop layouts."],
+] as const;
+
+function ProgramOverview() {
+  return (
+    <section className="panel program-overview" aria-labelledby="program-overview-title">
+      <div className="program-overview-heading">
+        <div>
+          <span className="section-kicker">PROGRAM OVERVIEW</span>
+          <h2 id="program-overview-title">Understand an app without becoming its engineer</h2>
+        </div>
+        <span className="overview-scope-pill">Explain · simulate · verify</span>
+      </div>
+
+      <div className="program-overview-copy">
+        <p>
+          VCAIST gives app owners a plain-English control room for software they depend on. It connects a project source,
+          makes important rules visible, lets people test business changes safely, and explains surprising results before
+          anyone decides what to change.
+        </p>
+        <p>
+          The current prototype indexes supported project files and demonstrates the complete analysis loop with the bundled
+          ShopSpring pricing fixture. Project-specific AI extraction and approval-based publishing are the next backend milestones;
+          the interface labels that boundary instead of pretending background analysis is still running.
+        </p>
+      </div>
+
+      <div className="program-feature-grid" aria-label="VCAIST features">
+        {programFeatures.map(([title, description], index) => (
+          <article key={title}>
+            <span aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
+            <div><h3>{title}</h3><p>{description}</p></div>
+          </article>
+        ))}
+      </div>
+
+      <aside className="program-story" aria-labelledby="program-story-title">
+        <div className="story-person" aria-hidden="true">M</div>
+        <div className="story-copy">
+          <span className="section-kicker">EXAMPLE USER STORY</span>
+          <h3 id="program-story-title">Maya needs to understand a checkout she did not build</h3>
+          <p>
+            Maya runs a small online candle shop. Her developer is unavailable, but she needs to understand whether a new bulk
+            discount will hurt her margin. She opens VCAIST and chooses the shop’s GitHub repository. The project is indexed,
+            while the original code remains untouched.
+          </p>
+          <ol>
+            <li><strong>Orient:</strong> Maya reads the plain-English app map and sees where checkout, pricing, and shipping connect.</li>
+            <li><strong>Experiment:</strong> She adjusts the sample discount and shipping controls, watching revenue and order totals update immediately.</li>
+            <li><strong>Catch a surprise:</strong> A zero-item safety test produces a negative total because shipping is subtracted from an empty order.</li>
+            <li><strong>Act with context:</strong> Maya shares the explanation and exact failing case with her developer. Nothing is published without approval.</li>
+          </ol>
+        </div>
+      </aside>
+    </section>
   );
 }
 

@@ -69,7 +69,7 @@ The interface uses a desktop sidebar, fluid content grids, touch-friendly contro
 
 - **Guided welcome page** — explains what VCAIST is for, walks through its four-step safety loop, and offers both a demo and a direct path into the user's own project.
 - **Direct workspace** — skips the tutorial and demo, opens the project-source chooser immediately, and accepts a local folder, Google Drive folder, or public GitHub repository.
-- **Workspace overview** — business metrics, connection state, a persistent cross-provider model selector, re-scan action, and a live order simulation.
+- **Workspace overview** — business metrics, connection state, a persistent cross-provider model selector, re-scan action, live order simulation, a plain-language program summary, complete feature index, and an end-to-end example story.
 - **Project importer** — one source chooser for local directories, Google Drive folders, and public GitHub repositories, with an explicit indexing state and clear completion message.
 - **Device-local scan cache** — fingerprints supported file metadata so an unchanged project can skip repeat indexing on the same browser for 30 days. Source contents are never stored in the cache, and browsers still require the user to select a local folder again for privacy.
 - **Business controls** — four sliders bound to the sample app's price, discount, discount threshold, and shipping fee.
@@ -77,7 +77,7 @@ The interface uses a desktop sidebar, fluid content grids, touch-friendly contro
 - **App map** — toggles between a plain-English purchase flow and the corresponding technical path.
 - **Safety tests** — runs five boundary scenarios and exposes the zero-quantity negative-total defect with relevant code and a proposed remedy.
 - **Help center** — quick-start instructions and plain-language answers to common trust and safety questions.
-- **Settings** — a tiered model-and-price comparison, scan behavior, test coverage, explanation preferences, and four persistent color themes saved locally on the device. Midnight Clay is the black-background default, with Midnight Sky, Forest Mint, and Warm Light alternatives. Model prices are presented per one million input/output tokens and include a visible date and provider-pricing caveat.
+- **Settings** — a tiered model-and-price comparison, scan behavior, test coverage, explanation preferences, and four persistent color themes saved locally on the device. Midnight Clay is the black-background default, with Midnight Sky, Forest Mint, and Warm Light alternatives. Shared semantic surfaces and WCAG-informed contrast tokens keep labels, status colors, boundaries, and controls legible in every theme. Model prices are presented per one million input/output tokens and include a visible date and provider-pricing caveat.
 
 ### Implementation
 

@@ -85,6 +85,11 @@ test("server-renders the interactive financial demo separately", async () => {
   assert.match(html, /Business controls/);
   assert.match(html, /Change project source/);
   assert.match(html, /A zero-item order pays the customer/);
+  assert.match(html, /PROGRAM OVERVIEW/);
+  assert.match(html, /Understand an app without becoming its engineer/);
+  assert.match(html, /Choose your source/);
+  assert.match(html, /Maya needs to understand a checkout/);
+  assert.match(html, /Project-specific AI extraction/);
   assert.match(html, /GPT-5\.6 Sol/);
   assert.match(html, /GPT-5\.6 Terra/);
   assert.match(html, /GPT-5\.6 Luna/);
@@ -156,12 +161,16 @@ test("offers the complete supported model and appearance catalogs", () => {
   assert.doesNotMatch(modelOptions.map((model) => model.menuPrice).join(" "), /intro|standard|Sep|>/i);
 });
 
-test("keeps onboarding labels readable in every theme", async () => {
+test("uses semantic, high-contrast surfaces throughout every theme", async () => {
   const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
   assert.match(css, /\.source-preview button \{[\s\S]*?color: var\(--ink\);[\s\S]*?background: var\(--surface\);/);
   assert.match(css, /\.source-preview strong \{[\s\S]*?color: var\(--ink\);/);
   assert.match(css, /\.demo-button \{[\s\S]*?color: var\(--accent-contrast\);[\s\S]*?var\(--green\)/);
   assert.match(css, /\.lesson-control \{[\s\S]*?background: var\(--surface\);/);
+  assert.match(css, /\.order-result \{[\s\S]*?background: var\(--green-soft\);/);
+  assert.match(css, /\.issue-panel \{[\s\S]*?var\(--coral-soft\)[\s\S]*?var\(--surface\)/);
+  assert.match(css, /\.program-feature-grid article \{[\s\S]*?background: var\(--surface-soft\);/);
+  assert.match(css, /--line-strong: #7c8982;/);
 });
 
 test("pricing sandbox exposes the sample app's real zero-quantity defect", () => {
