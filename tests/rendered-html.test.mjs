@@ -82,12 +82,11 @@ test("server-renders the interactive financial demo separately", async () => {
   const html = await response.text();
   assert.match(html, /<title>Financial demo · VCAIST<\/title>/i);
   assert.match(html, /Your app control room/);
-  assert.match(html, /Start with the big picture/);
-  assert.match(html, /Check app health/);
-  assert.match(html, /Try a sample order/);
-  assert.match(html, /Business controls/);
+  assert.match(html, /Understand the platform before exploring the app/);
+  assert.match(html, /Current Application/);
+  assert.match(html, /Understand the purpose/);
+  assert.match(html, /Follow the example story/);
   assert.match(html, /Change project source/);
-  assert.match(html, /A zero-item order pays the customer/);
   assert.match(html, /PROGRAM OVERVIEW/);
   assert.match(html, /Understand an app without becoming its engineer/);
   assert.match(html, /Choose your source/);
@@ -178,13 +177,27 @@ test("uses semantic, high-contrast surfaces throughout every theme", async () =>
 
 test("explains every workspace view immediately below its tab", async () => {
   const source = await readFile(new URL("../app/Dashboard.tsx", import.meta.url), "utf8");
-  assert.match(source, /Start with the big picture/);
+  assert.match(source, /Understand the platform before exploring the app/);
+  assert.match(source, /See every page before deciding what to change/);
   assert.match(source, /See which business rules move the numbers/);
   assert.match(source, /Follow one customer action through the app/);
   assert.match(source, /Understand edge cases before customers find them/);
   assert.match(source, /<WorkspaceViewIntroduction view=\{view\} \/>/);
   assert.match(source, /<WorkspaceViewIntroduction view=\{view\} \/> : null\}\s*\{projectReady && view === "overview" \? <ProgramOverview \/> : null\}\s*\{projectConnected \?/);
   assert.equal(source.match(/<ProgramOverview \/>/g)?.length, 1);
+});
+
+test("moves application intelligence into a consent-first page carousel", async () => {
+  const source = await readFile(new URL("../app/Dashboard.tsx", import.meta.url), "utf8");
+  assert.match(source, /id: "application", label: "Current Application", count: 4/);
+  assert.match(source, /aria-roledescription="carousel"/);
+  assert.match(source, /Home[\s\S]*Catalog[\s\S]*Cart[\s\S]*Checkout/);
+  assert.match(source, /function CurrentApplication[\s\S]*?<ApplicationCarousel project=\{project\} \/>[\s\S]*?<MetricCard/);
+  assert.doesNotMatch(source, /function Overview\(/);
+  assert.match(source, /May I help plan changes to this application\?/);
+  assert.match(source, /Allow change planning/);
+  assert.match(source, /Approve sandbox draft/);
+  assert.match(source, /This prototype does not edit connected source files yet/);
 });
 
 test("preserves the original README roadmap and core-loop brief", async () => {

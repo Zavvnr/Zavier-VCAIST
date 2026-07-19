@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent } from "react";
 import { AppChrome } from "./components/AppChrome";
 import { ImportProjectDialog } from "./components/ImportProjectDialog";
 import type { ImportedProject } from "@/lib/import-sources";
@@ -19,7 +19,7 @@ import {
   type PricingKnobs,
 } from "@/lib/pricing";
 
-type WorkspaceView = "overview" | "controls" | "map" | "tests";
+type WorkspaceView = "overview" | "application" | "controls" | "map" | "tests";
 
 const workspaceViewGuides: Record<WorkspaceView, {
   eyebrow: string;
@@ -29,9 +29,15 @@ const workspaceViewGuides: Record<WorkspaceView, {
 }> = {
   overview: {
     eyebrow: "OVERVIEW · START HERE",
-    title: "Start with the big picture",
-    description: "This page turns the latest project check into a quick summary: connection status, business results, a live pricing simulation, the most important surprise, and a guide to everything VCAIST can do.",
-    actions: ["Check app health", "Try a sample order", "Choose what to inspect next"],
+    title: "Understand the platform before exploring the app",
+    description: "This page explains what VCAIST is for, summarizes every platform feature, and follows one app owner through the complete safe-analysis story. Application pages, metrics, simulations, findings, and controls now live in Current Application.",
+    actions: ["Understand the purpose", "Review every feature", "Follow the example story"],
+  },
+  application: {
+    eyebrow: "CURRENT APPLICATION · SEE AND SHAPE IT",
+    title: "See every page before deciding what to change",
+    description: "This page presents the connected application as a page-by-page carousel, keeps its business snapshot and safe experiments together, and offers an AI change assistant that must ask for permission before it can help plan an edit.",
+    actions: ["Browse every detected page", "Inspect live app behavior", "Approve AI help before chatting"],
   },
   controls: {
     eyebrow: "CONTROLS · SAFE EXPERIMENTS",
@@ -98,6 +104,7 @@ const preciseMoney = new Intl.NumberFormat("en-US", {
 
 const viewOptions: Array<{ id: WorkspaceView; label: string; count?: number }> = [
   { id: "overview", label: "Overview" },
+  { id: "application", label: "Current Application", count: 4 },
   { id: "controls", label: "Controls", count: 4 },
   { id: "map", label: "App map" },
   { id: "tests", label: "Safety tests", count: 1 },
@@ -290,8 +297,9 @@ export function Dashboard({ startWithImporter = false }: { startWithImporter?: b
           </div>
         ) : null}
 
-        {projectReady && view === "overview" ? (
-          <Overview
+        {projectReady && view === "application" ? (
+          <CurrentApplication
+            project={project}
             snapshot={snapshot}
             knobs={knobs}
             updateKnob={updateKnob}
@@ -327,6 +335,13 @@ export function Dashboard({ startWithImporter = false }: { startWithImporter?: b
 
 function WorkspaceViewIntroduction({ view }: { view: WorkspaceView }) {
   const guide = workspaceViewGuides[view];
+  const viewMarks: Record<WorkspaceView, string> = {
+    overview: "◎",
+    application: "▦",
+    controls: "↔",
+    map: "⌁",
+    tests: "!",
+  };
 
   return (
     <section
@@ -336,7 +351,7 @@ function WorkspaceViewIntroduction({ view }: { view: WorkspaceView }) {
       aria-atomic="true"
     >
       <span className="view-introduction-mark" aria-hidden="true">
-        {view === "overview" ? "◎" : view === "controls" ? "↔" : view === "map" ? "⌁" : "!"}
+        {viewMarks[view]}
       </span>
       <div className="view-introduction-copy">
         <span className="view-introduction-eyebrow">{guide.eyebrow}</span>
@@ -368,10 +383,270 @@ function ProjectScanProgress({ project }: { project: ImportedProject }) {
   );
 }
 
-function Overview({
+const applicationPages = [
+  { id: "home", name: "Home", route: "/", purpose: "Brand story and featured products" },
+  { id: "catalog", name: "Catalog", route: "/shop", purpose: "Browse and compare the full collection" },
+  { id: "cart", name: "Cart", route: "/cart", purpose: "Review items, discounts, and totals" },
+  { id: "checkout", name: "Checkout", route: "/checkout", purpose: "Confirm delivery and payment" },
+] as const;
+
+type ApplicationPage = (typeof applicationPages)[number];
+type AssistantPermission = "pending" | "granted" | "declined";
+type ProposalState = "none" | "ready" | "approved";
+type ChatMessage = { role: "assistant" | "user"; text: string };
+
+function ApplicationCarousel({ project }: { project: ImportedProject }) {
+  const [activeIndex, setActiveIndex] = useState(0);
+  const activePage = applicationPages[activeIndex];
+  const isGuidedDemo = project.source === "demo";
+
+  function movePage(direction: number) {
+    setActiveIndex((current) => (current + direction + applicationPages.length) % applicationPages.length);
+  }
+
+  function handleKeyDown(event: KeyboardEvent<HTMLElement>) {
+    if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      movePage(-1);
+    }
+    if (event.key === "ArrowRight") {
+      event.preventDefault();
+      movePage(1);
+    }
+  }
+
+  return (
+    <section className="panel current-application-panel" aria-labelledby="application-carousel-title">
+      <div className="application-panel-heading">
+        <div>
+          <span className="section-kicker">CONNECTED APPLICATION</span>
+          <h2 id="application-carousel-title">Every page of {project.name}, in one place</h2>
+          <p>
+            Move through the page carousel, inspect what customers see, and ask the AI assistant to plan a change only after you give permission.
+          </p>
+        </div>
+        <span className="page-inventory-pill">{applicationPages.length} pages found</span>
+      </div>
+
+      <div className="application-carousel-layout">
+        <div className="application-carousel-column">
+          <div
+            className="application-carousel-stage"
+            tabIndex={0}
+            onKeyDown={handleKeyDown}
+            aria-roledescription="carousel"
+            aria-label={`${project.name} application pages`}
+          >
+            <div className="application-browser-bar" aria-hidden="true">
+              <span className="browser-dots"><i /><i /><i /></span>
+              <span className="browser-address">{project.name.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "application"}.app{activePage.route}</span>
+              <span className="browser-live">Preview</span>
+            </div>
+            <div className="application-page-live" aria-live="polite" aria-atomic="true">
+              <ApplicationPagePreview page={activePage} projectName={project.name} />
+            </div>
+          </div>
+
+          <div className="carousel-controls">
+            <button type="button" className="carousel-arrow" onClick={() => movePage(-1)} aria-label="Show previous application page">←</button>
+            <div>
+              <strong>{activePage.name}</strong>
+              <span>Page {activeIndex + 1} of {applicationPages.length} · {activePage.purpose}</span>
+            </div>
+            <button type="button" className="carousel-arrow" onClick={() => movePage(1)} aria-label="Show next application page">→</button>
+          </div>
+
+          <div className="application-page-list" role="tablist" aria-label="All application pages">
+            {applicationPages.map((page, index) => (
+              <button
+                type="button"
+                key={page.id}
+                className={index === activeIndex ? "application-page-tab active" : "application-page-tab"}
+                onClick={() => setActiveIndex(index)}
+                role="tab"
+                aria-selected={index === activeIndex}
+              >
+                <span>{String(index + 1).padStart(2, "0")}</span>
+                <div><strong>{page.name}</strong><small>{page.route}</small></div>
+              </button>
+            ))}
+          </div>
+
+          <p className="application-preview-boundary">
+            {isGuidedDemo
+              ? "This carousel shows all four pages in the bundled ShopSpring practice application."
+              : `VCAIST found ${project.fileCount} supported files in ${project.name}. The four-page commerce preview remains the guided sample until project-specific page rendering is connected.`}
+          </p>
+        </div>
+
+        <AiChangeAssistant page={activePage} projectName={project.name} />
+      </div>
+    </section>
+  );
+}
+
+function AiChangeAssistant({ page, projectName }: { page: ApplicationPage; projectName: string }) {
+  const [permission, setPermission] = useState<AssistantPermission>("pending");
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [message, setMessage] = useState("");
+  const [proposalState, setProposalState] = useState<ProposalState>("none");
+
+  function grantPermission() {
+    setPermission("granted");
+    setMessages([{
+      role: "assistant",
+      text: `Thank you. I can now discuss ${projectName} and prepare a private change plan. What would you like to change on the ${page.name} page?`,
+    }]);
+  }
+
+  function declinePermission() {
+    setPermission("declined");
+    setMessages([]);
+    setProposalState("none");
+  }
+
+  function submitMessage(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const request = message.trim();
+    if (!request || permission !== "granted") return;
+
+    setMessages((current) => [
+      ...current,
+      { role: "user", text: request },
+      {
+        role: "assistant",
+        text: `I can prepare “${request}” as a reviewable draft for the ${page.name} page. I will not apply it to the sandbox or the live app unless you approve the next step.`,
+      },
+    ]);
+    setMessage("");
+    setProposalState("ready");
+  }
+
+  function approveProposal() {
+    setProposalState("approved");
+    setMessages((current) => [
+      ...current,
+      {
+        role: "assistant",
+        text: "Permission recorded for a sandbox draft. This prototype does not edit connected source files yet, so your original and live application remain unchanged.",
+      },
+    ]);
+  }
+
+  return (
+    <aside className="ai-change-chat" aria-labelledby="ai-change-chat-title">
+      <div className="ai-chat-heading">
+        <span className="ai-avatar" aria-hidden="true">AI</span>
+        <div><h3 id="ai-change-chat-title">Change assistant</h3><p>Permission required · live app protected</p></div>
+        <span className={permission === "granted" ? "assistant-status allowed" : "assistant-status"}>{permission === "granted" ? "Allowed" : "Locked"}</span>
+      </div>
+
+      {permission === "pending" ? (
+        <div className="ai-permission-card" role="dialog" aria-labelledby="ai-permission-title" aria-describedby="ai-permission-description">
+          <span className="permission-lock" aria-hidden="true">✓</span>
+          <div className="chat-bubble assistant">
+            <strong id="ai-permission-title">May I help plan changes to this application?</strong>
+            <p id="ai-permission-description">I need your permission before I can discuss the project or prepare a draft. I will ask again before any proposed change moves into the sandbox.</p>
+          </div>
+          <button type="button" className="button dark full" onClick={grantPermission}>Allow change planning</button>
+          <button type="button" className="button ghost full" onClick={declinePermission}>Not now</button>
+        </div>
+      ) : null}
+
+      {permission === "declined" ? (
+        <div className="ai-permission-card declined" role="status">
+          <span className="permission-lock" aria-hidden="true">—</span>
+          <div className="chat-bubble assistant"><strong>Permission declined</strong><p>No project details were shared with the assistant and no changes were made.</p></div>
+          <button type="button" className="button ghost full" onClick={() => setPermission("pending")}>Ask me again</button>
+        </div>
+      ) : null}
+
+      {permission === "granted" ? (
+        <>
+          <div className="chat-message-list" aria-live="polite">
+            {messages.map((chatMessage, index) => (
+              <div className={`chat-bubble ${chatMessage.role}`} key={`${chatMessage.role}-${index}`}>
+                <strong>{chatMessage.role === "assistant" ? "VCAIST AI" : "You"}</strong>
+                <p>{chatMessage.text}</p>
+              </div>
+            ))}
+          </div>
+
+          {proposalState === "ready" ? (
+            <div className="proposal-permission" role="group" aria-label="Approve proposed sandbox draft">
+              <strong>Prepare this draft in the safe sandbox?</strong>
+              <p>Your connected source and live app will stay untouched.</p>
+              <div><button type="button" className="button dark small" onClick={approveProposal}>Approve sandbox draft</button><button type="button" className="text-button" onClick={() => setProposalState("none")}>Keep discussing</button></div>
+            </div>
+          ) : null}
+
+          {proposalState === "approved" ? <div className="proposal-approved" role="status"><span aria-hidden="true">✓</span> Sandbox permission recorded</div> : null}
+
+          <form className="ai-chat-form" onSubmit={submitMessage}>
+            <label className="sr-only" htmlFor="ai-change-message">Describe the application change you want</label>
+            <textarea
+              id="ai-change-message"
+              value={message}
+              onChange={(event) => setMessage(event.target.value)}
+              placeholder={`Ask for a change to ${page.name}…`}
+              rows={3}
+            />
+            <button type="submit" className="button dark" disabled={!message.trim()}>Send request <span aria-hidden="true">↑</span></button>
+          </form>
+        </>
+      ) : null}
+    </aside>
+  );
+}
+
+function ApplicationPagePreview({ page, projectName }: { page: ApplicationPage; projectName: string }) {
+  return (
+    <div className={`shop-preview-page ${page.id}`}>
+      <header className="shop-preview-header">
+        <strong>{projectName}</strong>
+        <nav aria-label={`${page.name} preview navigation`}><span>New</span><span>Shop</span><span>Our story</span></nav>
+        <button type="button" tabIndex={-1}>Bag · 2</button>
+      </header>
+
+      {page.id === "home" ? (
+        <div className="shop-home-preview">
+          <div className="shop-hero-copy"><small>SMALL-BATCH ESSENTIALS</small><h3>Make everyday rituals feel considered.</h3><p>Warm scents, thoughtful materials, and objects made to last.</p><span>Shop the collection →</span></div>
+          <div className="shop-hero-product" aria-hidden="true"><i /><strong>EMBER</strong><small>cedar · amber · fig</small></div>
+        </div>
+      ) : null}
+
+      {page.id === "catalog" ? (
+        <div className="shop-catalog-preview">
+          <div className="shop-preview-title"><div><small>THE COLLECTION</small><h3>Find your next favorite</h3></div><span>12 products · Sort by</span></div>
+          <div className="shop-product-grid">
+            {["Ember", "Sunday", "Quiet Hour", "After Rain"].map((product, index) => <article key={product}><i className={`product-shape tone-${index + 1}`} /><div><strong>{product}</strong><span>{index % 2 ? "$42" : "$49"}</span></div><small>{index % 2 ? "soft linen · moss" : "cedar · amber · fig"}</small></article>)}
+          </div>
+        </div>
+      ) : null}
+
+      {page.id === "cart" ? (
+        <div className="shop-cart-preview">
+          <div className="shop-cart-items"><small>YOUR BAG · 2 ITEMS</small><h3>A few good things</h3>{["Ember candle", "Quiet Hour candle"].map((product, index) => <article key={product}><i className={`cart-product tone-${index + 1}`} /><div><strong>{product}</strong><span>Qty 1 · Remove</span></div><b>{index ? "$42.00" : "$49.00"}</b></article>)}</div>
+          <aside><small>ORDER SUMMARY</small><p><span>Subtotal</span><strong>$91.00</strong></p><p><span>Shipping</span><strong>$6.99</strong></p><p className="shop-total"><span>Total</span><strong>$97.99</strong></p><button type="button" tabIndex={-1}>Continue to checkout</button></aside>
+        </div>
+      ) : null}
+
+      {page.id === "checkout" ? (
+        <div className="shop-checkout-preview">
+          <div><small>SECURE CHECKOUT</small><h3>Where should we send it?</h3><div className="preview-form-grid"><label>Email<span>maya@example.com</span></label><label>Country<span>United States</span></label><label>First name<span>Maya</span></label><label>Last name<span>Chen</span></label><label className="wide">Address<span>128 Market Street</span></label></div></div>
+          <aside><small>2 ITEMS</small><p><span>Ember</span><strong>$49</strong></p><p><span>Quiet Hour</span><strong>$42</strong></p><p><span>Shipping</span><strong>$6.99</strong></p><p className="shop-total"><span>Total</span><strong>$97.99</strong></p><button type="button" tabIndex={-1}>Continue to payment</button></aside>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function CurrentApplication({
+  project,
   snapshot, knobs, updateKnob, quantity, setQuantity, currentOrder,
   chartValues, chartMax, openControls, openTests,
 }: {
+  project: ImportedProject;
   snapshot: ReturnType<typeof calculateBusinessSnapshot>;
   knobs: PricingKnobs;
   updateKnob: <K extends keyof PricingKnobs>(key: K, value: number) => void;
@@ -385,6 +660,14 @@ function Overview({
 }) {
   return (
     <div className="view-stack">
+      <ApplicationCarousel project={project} />
+
+      <div className="application-intelligence-heading">
+        <span className="section-kicker">APPLICATION INTELLIGENCE</span>
+        <h2>Understand what the current application is doing</h2>
+        <p>The original Overview snapshot, sandbox, safety finding, and discovered controls now live with the application they describe.</p>
+      </div>
+
       <section className="metric-grid" aria-label="Business snapshot">
         <MetricCard label="Est. monthly revenue" value={money.format(snapshot.revenue)} note="based on 184 recent orders" trend="+8.4%" tone="green" />
         <MetricCard label="Typical order" value={preciseMoney.format(snapshot.averageOrder)} note="when someone buys 3 items" trend="Live" tone="blue" />
