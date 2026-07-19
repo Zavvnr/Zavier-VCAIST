@@ -236,6 +236,9 @@ test("presents system-wide safety and security findings as an interactive list",
   assert.match(source, /onClick=\{\(\) => setSelectedFindingId\(finding\.id\)\}/);
   assert.match(source, /HOW VCAIST CHECKED[\s\S]*EVIDENCE[\s\S]*FAILURE OR ATTACK SCENARIO[\s\S]*BUSINESS AND SYSTEM IMPACT/);
   assert.match(source, /Security findings are guided code-review examples/);
+  assert.match(source, /safetySeverityPriority\[left\.severity\] - safetySeverityPriority\[right\.severity\]/);
+  assert.match(source, /Highest priority first/);
+  assert.match(source, /Critical risks appear before high and medium findings; verified protections stay at the bottom/);
   assert.match(css, /\.safety-finding-list button\.selected \{[\s\S]*?var\(--coral-soft\)/);
   assert.match(css, /\.safety-detail-panel \{[\s\S]*?position: sticky;/);
 });

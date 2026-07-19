@@ -2480,6 +2480,32 @@ strong {
   font-size: 9px;
 }
 
+.safety-sort-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 14px 0 8px;
+  color: var(--muted);
+  font-size: 8px;
+  line-height: 1.45;
+}
+
+.safety-sort-note > span {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  color: var(--coral);
+  font-size: 12px;
+  font-weight: 900;
+  background: var(--coral-soft);
+  border-radius: 50%;
+}
+
+.safety-sort-note p { margin: 0; }
+.safety-sort-note strong { color: var(--ink); }
+
 .safety-toolbar {
   display: flex;
   align-items: center;

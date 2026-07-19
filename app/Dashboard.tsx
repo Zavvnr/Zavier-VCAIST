@@ -953,6 +953,13 @@ type SafetyFinding = {
   code: string;
 };
 
+const safetySeverityPriority: Record<SafetyFinding["severity"], number> = {
+  critical: 0,
+  high: 1,
+  medium: 2,
+  verified: 3,
+};
+
 const safetyFindingCatalog: readonly SafetyFinding[] = [
   {
     id: "negative-total",
@@ -1118,14 +1125,18 @@ return Response.json(order);`,
   },
 ];
 
+const safetyFindingsByPriority = [...safetyFindingCatalog].sort(
+  (left, right) => safetySeverityPriority[left.severity] - safetySeverityPriority[right.severity],
+);
+
 type SafetyFilter = "all" | "risks" | "passed";
 
 function SafetyTests({ results, shippingFee }: { results: ReturnType<typeof stressTest>; shippingFee: number }) {
   const [filter, setFilter] = useState<SafetyFilter>("all");
   const [query, setQuery] = useState("");
-  const [selectedFindingId, setSelectedFindingId] = useState(safetyFindingCatalog[0].id);
+  const [selectedFindingId, setSelectedFindingId] = useState(safetyFindingsByPriority[0].id);
   const normalizedQuery = query.trim().toLowerCase();
-  const filteredFindings = useMemo(() => safetyFindingCatalog.filter((finding) => {
+  const filteredFindings = useMemo(() => safetyFindingsByPriority.filter((finding) => {
     const matchesFilter = filter === "all" || (filter === "risks" ? finding.status === "risk" : finding.status === "passed");
     const matchesQuery = !normalizedQuery || [finding.title, finding.summary, finding.category, finding.severity, ...finding.affected]
       .some((value) => value.toLowerCase().includes(normalizedQuery));
@@ -1138,7 +1149,7 @@ function SafetyTests({ results, shippingFee }: { results: ReturnType<typeof stre
     }
   }, [filteredFindings, selectedFindingId]);
 
-  const selectedFinding = safetyFindingCatalog.find((finding) => finding.id === selectedFindingId) ?? safetyFindingCatalog[0];
+  const selectedFinding = safetyFindingsByPriority.find((finding) => finding.id === selectedFindingId) ?? safetyFindingsByPriority[0];
   const emptyOrder = results.find((result) => result.quantity === 0);
   const selectedEvidence = selectedFinding.id === "negative-total"
     ? `The executed quantity-0 check expected at least $0.00 and received −${preciseMoney.format(Math.abs(emptyOrder?.total ?? shippingFee))}.`
@@ -1154,6 +1165,8 @@ function SafetyTests({ results, shippingFee }: { results: ReturnType<typeof stre
         </div>
 
         <div className="safety-review-boundary" role="note"><span aria-hidden="true">i</span><p><strong>What is real in this prototype?</strong>The pricing boundary test executes the bundled ShopSpring function. Security findings are guided code-review examples based on the sample architecture, not proof that an imported project was exploited.</p></div>
+
+        <div className="safety-sort-note" role="note"><span aria-hidden="true">↓</span><p><strong>Highest priority first.</strong> Critical risks appear before high and medium findings; verified protections stay at the bottom.</p></div>
 
         <div className="safety-toolbar">
           <div className="safety-filter" aria-label="Filter safety findings">
