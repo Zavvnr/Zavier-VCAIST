@@ -14,7 +14,6 @@ import {
 import {
   calculateBusinessSnapshot,
   defaultKnobs,
-  runSamplePricing,
   stressTest,
   type PricingKnobs,
 } from "@/lib/pricing";
@@ -36,8 +35,8 @@ const workspaceViewGuides: Record<WorkspaceView, {
   application: {
     eyebrow: "CURRENT APPLICATION · SEE AND SHAPE IT",
     title: "See every page before deciding what to change",
-    description: "This page presents the connected application as a page-by-page carousel, keeps its business snapshot and safe experiments together, and offers an AI change assistant that must ask for permission before it can help plan an edit.",
-    actions: ["Browse every detected page", "Inspect live app behavior", "Approve AI help before chatting"],
+    description: "This page presents the connected application as a page-by-page carousel and offers an AI change assistant that must ask for permission before it can help plan an edit.",
+    actions: ["Browse every detected page", "Choose a page to discuss", "Approve AI help before chatting"],
   },
   controls: {
     eyebrow: "CONTROLS · SAFE EXPERIMENTS",
@@ -113,7 +112,6 @@ const viewOptions: Array<{ id: WorkspaceView; label: string; count?: number }> =
 export function Dashboard({ startWithImporter = false }: { startWithImporter?: boolean }) {
   const [view, setView] = useState<WorkspaceView>("overview");
   const [knobs, setKnobs] = useState<PricingKnobs>(defaultKnobs);
-  const [quantity, setQuantity] = useState(3);
   const [model, setModel] = useState<ModelId>(defaultPreferences.model);
   const [scanning, setScanning] = useState(false);
   const [scanCacheHit, setScanCacheHit] = useState(false);
@@ -148,17 +146,8 @@ export function Dashboard({ startWithImporter = false }: { startWithImporter?: b
   }, []);
 
   const snapshot = useMemo(() => calculateBusinessSnapshot(knobs), [knobs]);
-  const currentOrder = useMemo(
-    () => runSamplePricing(quantity, knobs),
-    [quantity, knobs],
-  );
   const testResults = useMemo(() => stressTest(knobs), [knobs]);
   const issueCount = testResults.filter((result) => !result.passed).length;
-  const chartValues = [1, 2, 3, 4, 5, 6].map((itemQuantity) => ({
-    quantity: itemQuantity,
-    total: Math.max(0, runSamplePricing(itemQuantity, knobs).total),
-  }));
-  const chartMax = Math.max(...chartValues.map((item) => item.total), 1);
 
   function updateKnob<K extends keyof PricingKnobs>(key: K, value: number) {
     setKnobs((current) => ({ ...current, [key]: value }));
@@ -298,19 +287,7 @@ export function Dashboard({ startWithImporter = false }: { startWithImporter?: b
         ) : null}
 
         {projectReady && view === "application" ? (
-          <CurrentApplication
-            project={project}
-            snapshot={snapshot}
-            knobs={knobs}
-            updateKnob={updateKnob}
-            quantity={quantity}
-            setQuantity={setQuantity}
-            currentOrder={currentOrder}
-            chartValues={chartValues}
-            chartMax={chartMax}
-            openControls={() => setView("controls")}
-            openTests={() => setView("tests")}
-          />
+          <CurrentApplication project={project} />
         ) : null}
 
         {projectReady && view === "controls" ? (
@@ -641,128 +618,10 @@ function ApplicationPagePreview({ page, projectName }: { page: ApplicationPage; 
   );
 }
 
-function CurrentApplication({
-  project,
-  snapshot, knobs, updateKnob, quantity, setQuantity, currentOrder,
-  chartValues, chartMax, openControls, openTests,
-}: {
-  project: ImportedProject;
-  snapshot: ReturnType<typeof calculateBusinessSnapshot>;
-  knobs: PricingKnobs;
-  updateKnob: <K extends keyof PricingKnobs>(key: K, value: number) => void;
-  quantity: number;
-  setQuantity: (value: number) => void;
-  currentOrder: ReturnType<typeof runSamplePricing>;
-  chartValues: Array<{ quantity: number; total: number }>;
-  chartMax: number;
-  openControls: () => void;
-  openTests: () => void;
-}) {
+function CurrentApplication({ project }: { project: ImportedProject }) {
   return (
     <div className="view-stack">
       <ApplicationCarousel project={project} />
-
-      <div className="application-intelligence-heading">
-        <span className="section-kicker">APPLICATION INTELLIGENCE</span>
-        <h2>Understand what the current application is doing</h2>
-        <p>The original Overview snapshot, sandbox, safety finding, and discovered controls now live with the application they describe.</p>
-      </div>
-
-      <section className="metric-grid" aria-label="Business snapshot">
-        <MetricCard label="Est. monthly revenue" value={money.format(snapshot.revenue)} note="based on 184 recent orders" trend="+8.4%" tone="green" />
-        <MetricCard label="Typical order" value={preciseMoney.format(snapshot.averageOrder)} note="when someone buys 3 items" trend="Live" tone="blue" />
-        <MetricCard label="Estimated margin" value={`${snapshot.margin.toFixed(1)}%`} note="after product costs" trend="Healthy" tone="amber" />
-        <MetricCard label="Safety check" value="1 surprise" note="needs your attention" trend="Review" tone="coral" />
-      </section>
-
-      <div className="overview-grid">
-        <section className="panel simulator-panel">
-          <div className="panel-heading">
-            <div>
-              <span className="section-kicker">LIVE SANDBOX</span>
-              <h2>What happens when an order changes?</h2>
-              <p>This runs the pricing code from ShopSpring—no live customers affected.</p>
-            </div>
-            <span className="safe-pill">Safe to try</span>
-          </div>
-
-          <div className="quantity-control">
-            <div className="range-label-row">
-              <label htmlFor="quantity">Items in this test order</label>
-              <output htmlFor="quantity">{quantity}</output>
-            </div>
-            <input
-              id="quantity"
-              className="range-input"
-              type="range"
-              min="0"
-              max="8"
-              value={quantity}
-              onChange={(event) => setQuantity(Number(event.target.value))}
-              style={{ "--range-progress": `${(quantity / 8) * 100}%` } as CSSProperties}
-            />
-            <div className="range-ends"><span>0 items</span><span>8 items</span></div>
-          </div>
-
-          <div className={currentOrder.total < 0 ? "order-result danger" : "order-result"}>
-            <div>
-              <span>Customer would pay</span>
-              <strong>{preciseMoney.format(currentOrder.total)}</strong>
-            </div>
-            <div className="calculation-line">
-              <span>{preciseMoney.format(currentOrder.subtotal)} items</span>
-              <span>− {preciseMoney.format(currentOrder.discount)} discount</span>
-              <span>− {preciseMoney.format(knobs.shippingFee)} shipping</span>
-            </div>
-          </div>
-
-          <div className="mini-chart" aria-label="Order total by quantity">
-            {chartValues.map((item) => (
-              <div className="chart-column" key={item.quantity}>
-                <span
-                  className={item.quantity === quantity ? "chart-bar active" : "chart-bar"}
-                  style={{ height: `${Math.max(8, (item.total / chartMax) * 100)}%` }}
-                  title={`${item.quantity} items: ${preciseMoney.format(item.total)}`}
-                />
-                <small>{item.quantity}</small>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <section className="panel issue-panel">
-          <div className="issue-flag">NEEDS ATTENTION</div>
-          <div className="bug-mark" aria-hidden="true">!</div>
-          <h2>A zero-item order pays the customer</h2>
-          <p>
-            If quantity is 0, ShopSpring returns <strong>−{preciseMoney.format(knobs.shippingFee)}</strong>.
-            That could create a refund instead of stopping checkout.
-          </p>
-          <div className="plain-explanation">
-            <span aria-hidden="true">↳</span>
-            <div><strong>Why it happens</strong><p>Shipping is being subtracted from the order instead of added.</p></div>
-          </div>
-          <button className="button dark full" onClick={openTests}>See the real test <span aria-hidden="true">→</span></button>
-          <small className="permission-note">Nothing will be changed without your approval.</small>
-        </section>
-      </div>
-
-      <section className="panel controls-preview">
-        <div className="panel-heading horizontal">
-          <div>
-            <span className="section-kicker">FOUND IN YOUR CODE</span>
-            <h2>Business controls</h2>
-            <p>VCAIST found 4 values you can safely experiment with.</p>
-          </div>
-          <button className="text-button with-arrow" onClick={openControls}>Open all controls <span aria-hidden="true">→</span></button>
-        </div>
-        <div className="knob-preview-grid">
-          <CompactKnob label="Price per item" value={`$${knobs.basePrice}`} min={20} max={80} current={knobs.basePrice} onChange={(value) => updateKnob("basePrice", value)} color="green" />
-          <CompactKnob label="Bulk discount" value={`${knobs.discountRate}%`} min={0} max={40} current={knobs.discountRate} onChange={(value) => updateKnob("discountRate", value)} color="blue" />
-          <CompactKnob label="Shipping fee" value={preciseMoney.format(knobs.shippingFee)} min={0} max={15} step={0.5} current={knobs.shippingFee} onChange={(value) => updateKnob("shippingFee", value)} color="amber" />
-        </div>
-      </section>
-
     </div>
   );
 }
@@ -831,33 +690,6 @@ function ProgramOverview() {
         </div>
       </aside>
     </section>
-  );
-}
-
-function MetricCard({ label, value, note, trend, tone }: { label: string; value: string; note: string; trend: string; tone: string }) {
-  return (
-    <article className={`metric-card ${tone}`}>
-      <div className="metric-topline"><span>{label}</span><span className="metric-trend">{trend}</span></div>
-      <strong>{value}</strong><p>{note}</p>
-    </article>
-  );
-}
-
-function CompactKnob({
-  label, value, min, max, step = 1, current, onChange, color,
-}: {
-  label: string; value: string; min: number; max: number; step?: number;
-  current: number; onChange: (value: number) => void; color: string;
-}) {
-  return (
-    <label className={`compact-knob ${color}`}>
-      <span className="compact-knob-title"><span>{label}</span><strong>{value}</strong></span>
-      <input
-        className="range-input compact" type="range" min={min} max={max} step={step} value={current}
-        onChange={(event) => onChange(Number(event.target.value))}
-        style={{ "--range-progress": `${((current - min) / (max - min)) * 100}%` } as CSSProperties}
-      />
-    </label>
   );
 }
 

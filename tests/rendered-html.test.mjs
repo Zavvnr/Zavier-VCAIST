@@ -169,8 +169,8 @@ test("uses semantic, high-contrast surfaces throughout every theme", async () =>
   assert.match(css, /\.source-preview strong \{[\s\S]*?color: var\(--ink\);/);
   assert.match(css, /\.demo-button \{[\s\S]*?color: var\(--accent-contrast\);[\s\S]*?var\(--green\)/);
   assert.match(css, /\.lesson-control \{[\s\S]*?background: var\(--surface\);/);
-  assert.match(css, /\.order-result \{[\s\S]*?background: var\(--green-soft\);/);
-  assert.match(css, /\.issue-panel \{[\s\S]*?var\(--coral-soft\)[\s\S]*?var\(--surface\)/);
+  assert.match(css, /\.application-carousel-stage \{[\s\S]*?background: var\(--surface-soft\);/);
+  assert.match(css, /\.ai-change-chat \{[\s\S]*?var\(--surface-soft\)[\s\S]*?var\(--surface\)/);
   assert.match(css, /\.program-feature-grid article \{[\s\S]*?background: var\(--surface-soft\);/);
   assert.match(css, /--line-strong: #7c8982;/);
 });
@@ -187,13 +187,14 @@ test("explains every workspace view immediately below its tab", async () => {
   assert.equal(source.match(/<ProgramOverview \/>/g)?.length, 1);
 });
 
-test("moves application intelligence into a consent-first page carousel", async () => {
+test("keeps Current Application focused on its consent-first page carousel", async () => {
   const source = await readFile(new URL("../app/Dashboard.tsx", import.meta.url), "utf8");
   assert.match(source, /id: "application", label: "Current Application", count: 4/);
   assert.match(source, /aria-roledescription="carousel"/);
   assert.match(source, /Home[\s\S]*Catalog[\s\S]*Cart[\s\S]*Checkout/);
-  assert.match(source, /function CurrentApplication[\s\S]*?<ApplicationCarousel project=\{project\} \/>[\s\S]*?<MetricCard/);
+  assert.match(source, /function CurrentApplication[\s\S]*?<ApplicationCarousel project=\{project\} \/>/);
   assert.doesNotMatch(source, /function Overview\(/);
+  assert.doesNotMatch(source, /APPLICATION INTELLIGENCE|Est\. monthly revenue|What happens when an order changes|A zero-item order pays the customer|function MetricCard|function CompactKnob/);
   assert.match(source, /May I help plan changes to this application\?/);
   assert.match(source, /Allow change planning/);
   assert.match(source, /Approve sandbox draft/);
