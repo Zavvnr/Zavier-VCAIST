@@ -208,6 +208,19 @@ test("keeps Current Application focused on its consent-first page carousel", asy
   assert.match(source, /This prototype does not edit connected source files yet/);
 });
 
+test("opens App Map steps in a read-only source workspace", async () => {
+  const source = await readFile(new URL("../app/Dashboard.tsx", import.meta.url), "utf8");
+  const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  assert.match(source, /Select any diagram step to open its source in the read-only workspace below/);
+  assert.match(source, /className=\{selectedStep === index \? "flow-step selected" : "flow-step"\}/);
+  assert.match(source, /onClick=\{\(\) => setSelectedStep\(index\)\}/);
+  assert.match(source, /<SourceCodeWorkspace selectedStep=\{selectedStep\} onSelect=\{setSelectedStep\} \/>/);
+  assert.match(source, /CartPage\.tsx[\s\S]*pricing\.ts[\s\S]*route\.ts[\s\S]*stripe\.ts/);
+  assert.match(source, /This workspace can inspect files, but it cannot edit or save them/);
+  assert.match(css, /\.source-workspace \{[\s\S]*?background: var\(--surface-soft\);/);
+  assert.match(css, /\.source-code-line\.highlighted \{[\s\S]*?var\(--blue-soft\)/);
+});
+
 test("preserves the original README roadmap and core-loop brief", async () => {
   const readme = await readFile(new URL("../README.md", import.meta.url), "utf8");
   assert.match(readme, /## What comes After/);

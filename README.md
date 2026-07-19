@@ -75,7 +75,7 @@ The interface uses a desktop sidebar, fluid content grids, touch-friendly contro
 - **Device-local scan cache** — fingerprints supported file metadata so an unchanged project can skip repeat indexing on the same browser for 30 days. Source contents are never stored in the cache, and browsers still require the user to select a local folder again for privacy.
 - **Business controls** — four sliders bound to the sample app's price, discount, discount threshold, and shipping fee.
 - **Live sandbox** — re-runs the connected pricing function without touching live customers or production data.
-- **App map** — toggles between a plain-English purchase flow and the corresponding technical path.
+- **App map** — toggles between a plain-English purchase flow and the corresponding technical path. Every diagram step is interactive and opens its mapped file in a line-numbered, read-only source workspace below the flow, with an application-flow file list and highlighted relevant lines.
 - **Safety tests** — runs five boundary scenarios and exposes the zero-quantity negative-total defect with relevant code and a proposed remedy.
 - **Help center** — quick-start instructions and plain-language answers to common trust and safety questions.
 - **Settings** — a tiered model-and-price comparison, scan behavior, test coverage, explanation preferences, and four persistent color themes saved locally on the device. Midnight Clay is the black-background default, with Midnight Sky, Forest Mint, and Warm Light alternatives. Shared semantic surfaces and WCAG-informed contrast tokens keep labels, status colors, boundaries, and controls legible in every theme. Model prices are presented per one million input/output tokens and include a visible date and provider-pricing caveat.

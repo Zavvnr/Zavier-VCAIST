@@ -47,8 +47,8 @@ const workspaceViewGuides: Record<WorkspaceView, {
   map: {
     eyebrow: "APP MAP · FOLLOW THE FLOW",
     title: "Follow one customer action through the app",
-    description: "This page connects the plain-English customer journey to the files, functions, APIs, and services that respond. Use it to understand where a business rule lives and what else it can affect.",
-    actions: ["Read the customer journey", "Switch to technical view", "Trace business impact"],
+    description: "This page connects the plain-English customer journey to the files, functions, APIs, and services that respond. Select any diagram step to open its source in the read-only workspace below.",
+    actions: ["Read the customer journey", "Switch to technical view", "Open source safely"],
   },
   tests: {
     eyebrow: "SAFETY TESTS · CATCH SURPRISES",
@@ -745,39 +745,135 @@ function FullKnob({
   );
 }
 
+const appMapSteps = [
+  {
+    icon: "1",
+    plainTitle: "A shopper adds items",
+    plainDetail: "The cart keeps count",
+    technicalTitle: "CartPage.tsx",
+    technicalDetail: "quantity state",
+    fileName: "CartPage.tsx",
+    filePath: "src/app/cart/CartPage.tsx",
+    explanation: "This page owns the item quantity and sends it into the pricing function whenever the shopper changes the cart.",
+    highlightLines: [6, 7, 8],
+    code: `"use client";
+
+import { useState } from "react";
+import { runSamplePricing } from "@/lib/pricing";
+
+export function CartPage() {
+  const [quantity, setQuantity] = useState(1);
+  const order = runSamplePricing(quantity, defaultKnobs);
+
+  return (
+    <Cart
+      quantity={quantity}
+      total={order.total}
+      onQuantityChange={setQuantity}
+    />
+  );
+}`,
+  },
+  {
+    icon: "2",
+    plainTitle: "Your price rules run",
+    plainDetail: "Price, discount, and shipping",
+    technicalTitle: "runSamplePricing()",
+    technicalDetail: "lib/pricing.ts",
+    fileName: "pricing.ts",
+    filePath: "lib/pricing.ts",
+    explanation: "The pricing function calculates the subtotal, applies the bulk discount, and produces the total used by checkout.",
+    highlightLines: [2, 3, 4, 5, 6, 7],
+    code: `export function runSamplePricing(quantity: number, knobs: PricingKnobs) {
+  const subtotal = knobs.basePrice * quantity;
+  const discount = quantity >= knobs.discountThreshold
+    ? subtotal * (knobs.discountRate / 100)
+    : 0;
+  const total = subtotal - discount - knobs.shippingFee;
+
+  return { subtotal, discount, total };
+}`,
+  },
+  {
+    icon: "3",
+    plainTitle: "Checkout shows the total",
+    plainDetail: "The shopper reviews it",
+    technicalTitle: "Checkout API",
+    technicalDetail: "POST /api/checkout",
+    fileName: "route.ts",
+    filePath: "src/app/api/checkout/route.ts",
+    explanation: "The checkout endpoint validates the cart, runs the shared pricing rule, and returns the amount the customer reviews.",
+    highlightLines: [5, 6, 7, 8],
+    code: `import { runSamplePricing } from "@/lib/pricing";
+
+export async function POST(request: Request) {
+  const { quantity } = await request.json();
+  const order = runSamplePricing(quantity, defaultKnobs);
+
+  return Response.json({
+    quantity,
+    total: order.total,
+  });
+}`,
+  },
+  {
+    icon: "4",
+    plainTitle: "Payment is collected",
+    plainDetail: "Stripe handles the charge",
+    technicalTitle: "Stripe PaymentIntent",
+    technicalDetail: "server-side request",
+    fileName: "stripe.ts",
+    filePath: "src/server/stripe.ts",
+    explanation: "The server converts the checkout total into cents and sends that exact amount to Stripe for collection.",
+    highlightLines: [4, 5, 6, 7],
+    code: `import Stripe from "stripe";
+
+export async function createPayment(total: number) {
+  const amountInCents = Math.round(total * 100);
+  return stripe.paymentIntents.create({
+    amount: amountInCents,
+    currency: "usd",
+  });
+}`,
+  },
+] as const;
+
 function AppMap({ mode, setMode }: { mode: "plain" | "technical"; setMode: (mode: "plain" | "technical") => void }) {
-  const plainNodes = [
-    { icon: "1", title: "A shopper adds items", detail: "The cart keeps count" },
-    { icon: "2", title: "Your price rules run", detail: "Price, discount, and shipping" },
-    { icon: "3", title: "Checkout shows the total", detail: "The shopper reviews it" },
-    { icon: "4", title: "Payment is collected", detail: "Stripe handles the charge" },
-  ];
-  const technicalNodes = [
-    { icon: "1", title: "CartPage.tsx", detail: "quantity state" },
-    { icon: "2", title: "calculatePrice()", detail: "src/lib/pricing.ts" },
-    { icon: "3", title: "Checkout API", detail: "POST /api/checkout" },
-    { icon: "4", title: "Stripe PaymentIntent", detail: "server-side request" },
-  ];
-  const nodes = mode === "plain" ? plainNodes : technicalNodes;
+  const [selectedStep, setSelectedStep] = useState<number | null>(null);
 
   return (
     <div className="map-layout">
       <section className="panel map-panel">
         <div className="panel-heading horizontal">
-          <div><span className="section-kicker">YOUR APP, EXPLAINED</span><h2>How a purchase moves through ShopSpring</h2><p>Follow the path from adding an item to receiving payment.</p></div>
+          <div><span className="section-kicker">YOUR APP, EXPLAINED</span><h2>How a purchase moves through ShopSpring</h2><p>Follow the path from adding an item to receiving payment. Select any step to inspect its source.</p></div>
           <div className="segmented-control" aria-label="Diagram language">
             <button className={mode === "plain" ? "active" : ""} onClick={() => setMode("plain")}>Plain English</button>
             <button className={mode === "technical" ? "active" : ""} onClick={() => setMode("technical")}>Technical</button>
           </div>
         </div>
         <div className="flow-map">
-          {nodes.map((node, index) => (
-            <div className="flow-step-wrap" key={node.title}>
-              <article className="flow-step"><span className="flow-icon">{node.icon}</span><strong>{node.title}</strong><small>{node.detail}</small></article>
-              {index < nodes.length - 1 ? <span className="flow-arrow" aria-hidden="true">→</span> : null}
+          {appMapSteps.map((step, index) => (
+            <div className="flow-step-wrap" key={step.filePath}>
+              <button
+                type="button"
+                className={selectedStep === index ? "flow-step selected" : "flow-step"}
+                onClick={() => setSelectedStep(index)}
+                aria-expanded={selectedStep === index}
+                aria-controls="app-map-source-workspace"
+              >
+                <span className="flow-icon">{step.icon}</span>
+                <strong>{mode === "plain" ? step.plainTitle : step.technicalTitle}</strong>
+                <small>{mode === "plain" ? step.plainDetail : step.technicalDetail}</small>
+                <span className="flow-source-action">View source <b aria-hidden="true">↓</b></span>
+              </button>
+              {index < appMapSteps.length - 1 ? <span className="flow-arrow" aria-hidden="true">→</span> : null}
             </div>
           ))}
         </div>
+
+        {selectedStep === null ? (
+          <div className="source-workspace-prompt" id="app-map-source-workspace" role="note"><span aria-hidden="true">{`{ }`}</span><p><strong>Select any step to inspect its source</strong>The file will open here in a read-only workspace.</p></div>
+        ) : <SourceCodeWorkspace selectedStep={selectedStep} onSelect={setSelectedStep} />}
       </section>
       <aside className="panel map-insight">
         <div className="insight-icon" aria-hidden="true">◎</div><span className="section-kicker">VCAIST NOTICED</span>
@@ -786,6 +882,56 @@ function AppMap({ mode, setMode }: { mode: "plain" | "technical"; setMode: (mode
         <div className="impact-list"><div><span>Checkout total</span><strong>Direct impact</strong></div><div><span>Payment charge</span><strong>Direct impact</strong></div><div><span>Order receipt</span><strong>Copies total</strong></div></div>
       </aside>
     </div>
+  );
+}
+
+function SourceCodeWorkspace({ selectedStep, onSelect }: { selectedStep: number; onSelect: (index: number) => void }) {
+  const selectedSource = appMapSteps[selectedStep];
+  const codeLines = selectedSource.code.split("\n");
+
+  return (
+    <section className="source-workspace" id="app-map-source-workspace" aria-labelledby="source-workspace-title" aria-live="polite">
+      <header className="source-workspace-header">
+        <div><span className="section-kicker">SOURCE WORKSPACE</span><h3 id="source-workspace-title">Code behind step {selectedStep + 1}</h3></div>
+        <span className="read-only-badge"><i aria-hidden="true">◇</i> Read only</span>
+      </header>
+
+      <div className="source-workspace-summary">
+        <span className="source-file-mark" aria-hidden="true">TS</span>
+        <div><strong>{selectedSource.fileName}</strong><code>{selectedSource.filePath}</code><p>{selectedSource.explanation}</p></div>
+      </div>
+
+      <div className="source-workspace-body">
+        <nav className="source-file-list" aria-label="Files in this application flow">
+          <span>FLOW FILES</span>
+          {appMapSteps.map((step, index) => (
+            <button
+              type="button"
+              key={step.filePath}
+              className={selectedStep === index ? "active" : ""}
+              onClick={() => onSelect(index)}
+              aria-current={selectedStep === index ? "page" : undefined}
+            >
+              <i aria-hidden="true">TS</i><span><strong>{step.fileName}</strong><small>Step {index + 1}</small></span>
+            </button>
+          ))}
+        </nav>
+
+        <div className="source-editor" aria-label={`Read-only source code for ${selectedSource.fileName}`}>
+          <div className="source-editor-tab"><span aria-hidden="true">TS</span><strong>{selectedSource.fileName}</strong><small>Read only</small></div>
+          <div className="source-editor-breadcrumb">ShopSpring <b aria-hidden="true">›</b> {selectedSource.filePath}</div>
+          <div className="source-code" role="region" aria-label="Source code" tabIndex={0}>
+            {codeLines.map((line, index) => {
+              const lineNumber = index + 1;
+              const highlighted = (selectedSource.highlightLines as readonly number[]).includes(lineNumber);
+              return <div className={highlighted ? "source-code-line highlighted" : "source-code-line"} key={`${selectedSource.fileName}-${lineNumber}`}><span aria-hidden="true">{lineNumber}</span><code>{line || " "}</code></div>;
+            })}
+          </div>
+        </div>
+      </div>
+
+      <footer className="source-workspace-footer"><span aria-hidden="true">✓</span><p><strong>Your code is protected.</strong> This workspace can inspect files, but it cannot edit or save them.</p></footer>
+    </section>
   );
 }
 
