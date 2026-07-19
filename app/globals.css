@@ -536,8 +536,8 @@ strong {
 }
 
 .view-introduction.compare {
-  --view-accent: var(--amber);
-  --view-soft: var(--amber-soft);
+  --view-accent: var(--green);
+  --view-soft: var(--green-soft);
 }
 
 .view-introduction.application {

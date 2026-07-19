@@ -214,6 +214,9 @@ test("replaces Controls with a two-application carousel comparison", async () =>
   const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
   assert.match(source, /type WorkspaceView = "overview" \| "application" \| "compare" \| "map" \| "tests"/);
   assert.match(source, /id: "compare", label: "Compare"/);
+  assert.match(source, /id: "map", label: "App Map"/);
+  assert.match(source, /id: "tests", label: "Safety Tests"/);
+  assert.match(css, /\.view-introduction\.compare \{[\s\S]*?--view-accent: var\(--green\);[\s\S]*?--view-soft: var\(--green-soft\);/);
   assert.doesNotMatch(source, /id: "controls", label: "Controls"/);
   assert.match(source, /<CompareApplications[\s\S]*currentProject=\{project\}[\s\S]*comparisonProject=\{comparisonProject\}/);
   assert.match(source, /<ComparisonAppCarousel project=\{currentProject\}[\s\S]*<ComparisonAppCarousel project=\{comparisonProject\}/);

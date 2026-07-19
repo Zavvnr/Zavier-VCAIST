@@ -94,8 +94,8 @@ const viewOptions: Array<{ id: WorkspaceView; label: string }> = [
   { id: "overview", label: "Overview" },
   { id: "application", label: "Current Application" },
   { id: "compare", label: "Compare" },
-  { id: "map", label: "App map" },
-  { id: "tests", label: "Safety tests" },
+  { id: "map", label: "App Map" },
+  { id: "tests", label: "Safety Tests" },
 ];
 
 export function Dashboard({ startWithImporter = false }: { startWithImporter?: boolean }) {
