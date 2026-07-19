@@ -101,12 +101,12 @@ const preciseMoney = new Intl.NumberFormat("en-US", {
   minimumFractionDigits: 2,
 });
 
-const viewOptions: Array<{ id: WorkspaceView; label: string; count?: number }> = [
+const viewOptions: Array<{ id: WorkspaceView; label: string }> = [
   { id: "overview", label: "Overview" },
-  { id: "application", label: "Current Application", count: 4 },
-  { id: "controls", label: "Controls", count: 4 },
+  { id: "application", label: "Current Application" },
+  { id: "controls", label: "Controls" },
   { id: "map", label: "App map" },
-  { id: "tests", label: "Safety tests", count: 1 },
+  { id: "tests", label: "Safety tests" },
 ];
 
 export function Dashboard({ startWithImporter = false }: { startWithImporter?: boolean }) {
@@ -147,7 +147,6 @@ export function Dashboard({ startWithImporter = false }: { startWithImporter?: b
 
   const snapshot = useMemo(() => calculateBusinessSnapshot(knobs), [knobs]);
   const testResults = useMemo(() => stressTest(knobs), [knobs]);
-  const issueCount = testResults.filter((result) => !result.passed).length;
 
   function updateKnob<K extends keyof PricingKnobs>(key: K, value: number) {
     setKnobs((current) => ({ ...current, [key]: value }));
@@ -234,11 +233,6 @@ export function Dashboard({ startWithImporter = false }: { startWithImporter?: b
             aria-selected={view === option.id}
           >
             {option.label}
-            {option.count ? (
-              <span className={option.id === "tests" ? "tab-count issue" : "tab-count"}>
-                {option.id === "tests" ? issueCount : option.count}
-              </span>
-            ) : null}
           </button>
         ))}
       </div> : null}

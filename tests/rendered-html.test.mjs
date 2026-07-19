@@ -187,9 +187,16 @@ test("explains every workspace view immediately below its tab", async () => {
   assert.equal(source.match(/<ProgramOverview \/>/g)?.length, 1);
 });
 
+test("keeps workspace page tabs free of confusing numeric badges", async () => {
+  const source = await readFile(new URL("../app/Dashboard.tsx", import.meta.url), "utf8");
+  const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  assert.doesNotMatch(source, /count\?: number|option\.count|issueCount|tab-count/);
+  assert.doesNotMatch(css, /\.tab-count/);
+});
+
 test("keeps Current Application focused on its consent-first page carousel", async () => {
   const source = await readFile(new URL("../app/Dashboard.tsx", import.meta.url), "utf8");
-  assert.match(source, /id: "application", label: "Current Application", count: 4/);
+  assert.match(source, /id: "application", label: "Current Application"/);
   assert.match(source, /aria-roledescription="carousel"/);
   assert.match(source, /Home[\s\S]*Catalog[\s\S]*Cart[\s\S]*Checkout/);
   assert.match(source, /function CurrentApplication[\s\S]*?<ApplicationCarousel project=\{project\} \/>/);

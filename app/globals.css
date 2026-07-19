@@ -509,23 +509,6 @@ strong {
   background: var(--green);
 }
 
-.tab-count {
-  display: grid;
-  place-items: center;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
-  color: var(--muted);
-  font-size: 9px;
-  background: var(--surface-soft);
-  border-radius: 10px;
-}
-
-.tab-count.issue {
-  color: var(--coral);
-  background: var(--coral-soft);
-}
-
 .workspace-content,
 .help-content,
 .settings-layout {
