@@ -46,9 +46,9 @@ const workspaceViewGuides: Record<WorkspaceView, {
   },
   map: {
     eyebrow: "APP MAP · FOLLOW THE FLOW",
-    title: "Follow one customer action through the app",
-    description: "This page connects the plain-English customer journey to the files, functions, APIs, and services that respond. Select any diagram step to open its source in the read-only workspace below.",
-    actions: ["Read the customer journey", "Switch to technical view", "Open source safely"],
+    title: "Follow the workflow, source code, and data relationships",
+    description: "This page connects the customer journey to the files, functions, APIs, services, and stored entities that respond. Inspect workflow source, read the entity relationship diagram, and open detected runtime or compile-time problems in Safety Tests.",
+    actions: ["Follow the customer journey", "Inspect source and data", "Open errors in Safety Tests"],
   },
   tests: {
     eyebrow: "SAFETY TESTS · CATCH SURPRISES",
@@ -147,6 +147,7 @@ export function Dashboard({ startWithImporter = false }: { startWithImporter?: b
 
   const snapshot = useMemo(() => calculateBusinessSnapshot(knobs), [knobs]);
   const testResults = useMemo(() => stressTest(knobs), [knobs]);
+  const runtimeErrorCount = testResults.filter((result) => !result.passed).length;
 
   function updateKnob<K extends keyof PricingKnobs>(key: K, value: number) {
     setKnobs((current) => ({ ...current, [key]: value }));
@@ -288,7 +289,18 @@ export function Dashboard({ startWithImporter = false }: { startWithImporter?: b
           <Controls knobs={knobs} updateKnob={updateKnob} snapshot={snapshot} reset={() => setKnobs(defaultKnobs)} />
         ) : null}
 
-        {projectReady && view === "map" ? <AppMap mode={mapMode} setMode={setMapMode} /> : null}
+        {projectReady && view === "map" ? (
+          <AppMap
+            mode={mapMode}
+            setMode={setMapMode}
+            runtimeErrorCount={runtimeErrorCount}
+            compileErrorCount={0}
+            onOpenSafetyTests={() => {
+              setView("tests");
+              window.requestAnimationFrame(() => document.getElementById("workspace-view-introduction")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+            }}
+          />
+        ) : null}
         {projectReady && view === "tests" ? <SafetyTests results={testResults} shippingFee={knobs.shippingFee} /> : null}
       </div>
       {importOpen ? (
@@ -316,6 +328,7 @@ function WorkspaceViewIntroduction({ view }: { view: WorkspaceView }) {
 
   return (
     <section
+      id="workspace-view-introduction"
       className={`view-introduction ${view}`}
       aria-labelledby={`view-introduction-${view}`}
       aria-live="polite"
@@ -626,7 +639,7 @@ const programFeatures = [
   ["Compare AI models", "Choose among Frontier, Workhorse, and Efficient models from OpenAI, Anthropic, Google, Moonshot AI, and Alibaba Cloud."],
   ["Find business controls", "Surface prices, fees, discounts, thresholds, and other values that affect how the app behaves."],
   ["Experiment safely", "Move responsive sliders and re-run the sample app logic in a private sandbox without touching live customers."],
-  ["Follow the app map", "Switch between a plain-English customer journey and the corresponding technical files and functions."],
+  ["Follow the app map", "Switch between a plain-English customer journey and technical source, then inspect a detailed entity relationship diagram with keys, cardinalities, integrity rules, and error handoff."],
   ["Review system-wide safety", "Combine real boundary runs with guided review of input limits, abuse controls, authorization, payments, resilience, and information exposure."],
   ["Keep human approval", "Review explanations and proposed remedies first. This prototype never publishes a code change automatically."],
   ["Adjust the experience", "Use the Help center, persistent settings, four accessible color themes, and responsive phone or desktop layouts."],
@@ -838,7 +851,135 @@ export async function createPayment(total: number) {
   },
 ] as const;
 
-function AppMap({ mode, setMode }: { mode: "plain" | "technical"; setMode: (mode: "plain" | "technical") => void }) {
+type ErdField = {
+  name: string;
+  type: string;
+  key?: "PK" | "FK" | "UQ";
+  detail: string;
+};
+
+type ErdEntity = {
+  name: string;
+  tableName: string;
+  purpose: string;
+  fields: readonly ErdField[];
+};
+
+const appEntities: readonly ErdEntity[] = [
+  {
+    name: "Customer",
+    tableName: "customers",
+    purpose: "The account that owns orders and the private customer data attached to them.",
+    fields: [
+      { name: "id", type: "UUID", key: "PK", detail: "Stable customer identifier." },
+      { name: "email", type: "VARCHAR(254)", key: "UQ", detail: "Normalized, unique sign-in and receipt address." },
+      { name: "displayName", type: "VARCHAR(120)", detail: "Human-readable name with a server-side length limit." },
+      { name: "createdAt", type: "TIMESTAMPTZ", detail: "Auditable account creation time." },
+    ],
+  },
+  {
+    name: "Order",
+    tableName: "orders",
+    purpose: "The commercial record of one checkout, including totals that must remain historically stable.",
+    fields: [
+      { name: "id", type: "UUID", key: "PK", detail: "Publicly unguessable order identifier." },
+      { name: "customerId", type: "UUID", key: "FK", detail: "Owner; every read must be scoped to this customer or tenant." },
+      { name: "status", type: "ORDER_STATUS", detail: "Draft, pending, paid, fulfilled, cancelled, or refunded." },
+      { name: "subtotal", type: "DECIMAL(12,2)", detail: "Item total before adjustments." },
+      { name: "discount", type: "DECIMAL(12,2)", detail: "Discount snapshot applied at checkout." },
+      { name: "shippingFee", type: "DECIMAL(12,2)", detail: "Shipping snapshot; never recomputed from a later rule." },
+      { name: "total", type: "DECIMAL(12,2)", detail: "Server-calculated amount, constrained to zero or greater." },
+      { name: "createdAt", type: "TIMESTAMPTZ", detail: "Ordering and audit timestamp." },
+    ],
+  },
+  {
+    name: "Order Item",
+    tableName: "order_items",
+    purpose: "A product and quantity captured inside an order, with the price frozen at purchase time.",
+    fields: [
+      { name: "id", type: "UUID", key: "PK", detail: "Line-item identifier." },
+      { name: "orderId", type: "UUID", key: "FK", detail: "Parent order; delete behavior must be explicit." },
+      { name: "productId", type: "UUID", key: "FK", detail: "Catalog product that was purchased." },
+      { name: "quantity", type: "INTEGER", detail: "Positive item count with an upper business limit." },
+      { name: "unitPriceSnapshot", type: "DECIMAL(12,2)", detail: "Purchase-time price so catalog edits cannot rewrite history." },
+    ],
+  },
+  {
+    name: "Product",
+    tableName: "products",
+    purpose: "The current sellable catalog item and its authoritative server-side price.",
+    fields: [
+      { name: "id", type: "UUID", key: "PK", detail: "Product identifier referenced by order items." },
+      { name: "sku", type: "VARCHAR(64)", key: "UQ", detail: "Unique stock-keeping identifier." },
+      { name: "name", type: "VARCHAR(160)", detail: "Customer-facing product name." },
+      { name: "currentUnitPrice", type: "DECIMAL(12,2)", detail: "Trusted price loaded by the server during checkout." },
+      { name: "active", type: "BOOLEAN", detail: "Prevents new sales without deleting historical references." },
+    ],
+  },
+  {
+    name: "Payment Attempt",
+    tableName: "payment_attempts",
+    purpose: "Every provider request or retry for an order, retained separately for reconciliation and incident review.",
+    fields: [
+      { name: "id", type: "UUID", key: "PK", detail: "Internal payment-attempt identifier." },
+      { name: "orderId", type: "UUID", key: "FK", detail: "Order being paid." },
+      { name: "providerPaymentId", type: "VARCHAR(255)", key: "UQ", detail: "Unique Stripe PaymentIntent or equivalent provider id." },
+      { name: "idempotencyKey", type: "VARCHAR(255)", key: "UQ", detail: "Stable retry key that prevents duplicate creation." },
+      { name: "amount", type: "DECIMAL(12,2)", detail: "Amount sent to the provider, matched against the order total." },
+      { name: "status", type: "PAYMENT_STATUS", detail: "Created, processing, succeeded, failed, or refunded." },
+      { name: "createdAt", type: "TIMESTAMPTZ", detail: "Sequence and audit timestamp." },
+    ],
+  },
+  {
+    name: "Pricing Rule",
+    tableName: "pricing_rules",
+    purpose: "A versioned business rule such as a bulk discount, threshold, or shipping fee.",
+    fields: [
+      { name: "id", type: "UUID", key: "PK", detail: "Rule identifier." },
+      { name: "name", type: "VARCHAR(120)", key: "UQ", detail: "Stable administrative name." },
+      { name: "kind", type: "RULE_KIND", detail: "Discount, threshold, fee, or other supported calculation." },
+      { name: "value", type: "DECIMAL(12,4)", detail: "Rule value with explicit units and precision." },
+      { name: "threshold", type: "INTEGER?", detail: "Optional activation boundary." },
+      { name: "version", type: "INTEGER", detail: "Monotonic version used for reproducibility." },
+      { name: "active", type: "BOOLEAN", detail: "Controls future use without deleting history." },
+    ],
+  },
+  {
+    name: "Applied Pricing Rule",
+    tableName: "applied_pricing_rules",
+    purpose: "The join record proving which version of each rule changed a particular order.",
+    fields: [
+      { name: "id", type: "UUID", key: "PK", detail: "Applied-rule identifier." },
+      { name: "orderId", type: "UUID", key: "FK", detail: "Order affected by the rule." },
+      { name: "pricingRuleId", type: "UUID", key: "FK", detail: "Source rule definition." },
+      { name: "ruleVersion", type: "INTEGER", detail: "Exact rule version evaluated for this order." },
+      { name: "amountApplied", type: "DECIMAL(12,2)", detail: "Signed monetary effect captured for audit and explanation." },
+    ],
+  },
+];
+
+const appEntityRelationships = [
+  { from: "Customer", fromCount: "1", verb: "places", toCount: "0..*", to: "Order", detail: "A customer may have no orders or many orders; every order has exactly one owner." },
+  { from: "Order", fromCount: "1", verb: "contains", toCount: "1..*", to: "Order Item", detail: "A valid order contains at least one item; every item belongs to one order." },
+  { from: "Product", fromCount: "1", verb: "appears in", toCount: "0..*", to: "Order Item", detail: "A product may appear in many historical line items; each line item references one product." },
+  { from: "Order", fromCount: "1", verb: "has attempts", toCount: "0..*", to: "Payment Attempt", detail: "An unpaid order may have no attempt, while retries create an auditable one-to-many history." },
+  { from: "Order", fromCount: "1", verb: "records", toCount: "0..*", to: "Applied Pricing Rule", detail: "An order records every pricing adjustment that affected its stored total." },
+  { from: "Pricing Rule", fromCount: "1", verb: "is captured by", toCount: "0..*", to: "Applied Pricing Rule", detail: "One versioned rule can be used by many orders without rewriting their historical outcomes." },
+] as const;
+
+function AppMap({
+  mode,
+  setMode,
+  runtimeErrorCount,
+  compileErrorCount,
+  onOpenSafetyTests,
+}: {
+  mode: "plain" | "technical";
+  setMode: (mode: "plain" | "technical") => void;
+  runtimeErrorCount: number;
+  compileErrorCount: number;
+  onOpenSafetyTests: () => void;
+}) {
   const [selectedStep, setSelectedStep] = useState<number | null>(null);
 
   return (
@@ -881,7 +1022,123 @@ function AppMap({ mode, setMode }: { mode: "plain" | "technical"; setMode: (mode
         <p>The same pricing function sets the number at checkout and the amount sent to Stripe. A mistake here reaches real payments.</p>
         <div className="impact-list"><div><span>Checkout total</span><strong>Direct impact</strong></div><div><span>Payment charge</span><strong>Direct impact</strong></div><div><span>Order receipt</span><strong>Copies total</strong></div></div>
       </aside>
+      <EntityRelationshipSection
+        runtimeErrorCount={runtimeErrorCount}
+        compileErrorCount={compileErrorCount}
+        onOpenSafetyTests={onOpenSafetyTests}
+      />
     </div>
+  );
+}
+
+function EntityRelationshipSection({
+  runtimeErrorCount,
+  compileErrorCount,
+  onOpenSafetyTests,
+}: {
+  runtimeErrorCount: number;
+  compileErrorCount: number;
+  onOpenSafetyTests: () => void;
+}) {
+  const hasErrors = runtimeErrorCount > 0 || compileErrorCount > 0;
+
+  return (
+    <section className="panel erd-section" aria-labelledby="erd-title">
+      {hasErrors ? (
+        <div className="map-diagnostic-alert error" role="alert">
+          <span className="map-diagnostic-icon" aria-hidden="true">!</span>
+          <div className="map-diagnostic-copy">
+            <span className="section-kicker">PROGRAM ERROR DETECTED</span>
+            <h3>Fix execution problems before trusting every path in this data model</h3>
+            <p>The current sample has a failing quantity-zero execution path. The diagram remains useful, but an error can prevent a workflow from creating or updating these records correctly.</p>
+            <div className="map-diagnostic-status" aria-label="Program diagnostic status">
+              <span className={runtimeErrorCount > 0 ? "error" : "healthy"}>Runtime <strong>{runtimeErrorCount > 0 ? `${runtimeErrorCount} error${runtimeErrorCount === 1 ? "" : "s"}` : "No errors"}</strong></span>
+              <span className={compileErrorCount > 0 ? "error" : "healthy"}>Compile-time <strong>{compileErrorCount > 0 ? `${compileErrorCount} error${compileErrorCount === 1 ? "" : "s"}` : "No errors"}</strong></span>
+            </div>
+          </div>
+          <button type="button" className="map-safety-button" onClick={onOpenSafetyTests}>Open Safety Tests <span aria-hidden="true">→</span></button>
+        </div>
+      ) : null}
+
+      <div className="erd-heading">
+        <div>
+          <span className="section-kicker">ENTITY RELATIONSHIP DIAGRAM</span>
+          <h2 id="erd-title">How ShopSpring stores and connects its business data</h2>
+        </div>
+        <span className="erd-model-badge">Conceptual data model</span>
+      </div>
+
+      <div className="erd-definition">
+        <div>
+          <h3>What is an entity relationship diagram?</h3>
+          <p>An entity relationship diagram, usually shortened to <strong>ERD</strong>, is a visual blueprint of the durable information an application needs and the rules connecting that information. An <strong>entity</strong> is a business object—such as a customer, order, product, or payment attempt—and often becomes a database table. Its <strong>attributes</strong> are the fields stored for each record.</p>
+          <p>Relationship lines explain how records refer to one another. Their <strong>cardinality</strong> states the allowed quantity on each side: <code>1</code> means exactly one, <code>0..*</code> means zero or many, and <code>1..*</code> means one or many. Primary and foreign keys make those relationships enforceable instead of merely descriptive.</p>
+        </div>
+        <div className="erd-why-it-matters">
+          <h3>Why this matters</h3>
+          <ul>
+            <li>Shows where customer ownership and authorization must be checked.</li>
+            <li>Reveals duplicate-payment, orphan-record, and accidental-deletion risks.</li>
+            <li>Separates current catalog values from historical order snapshots.</li>
+            <li>Makes data migrations, API contracts, tests, and audit trails easier to reason about.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div className="erd-scope-note" role="note"><span aria-hidden="true">i</span><p><strong>How to interpret this prototype</strong>This is VCAIST’s conceptual model of the bundled ShopSpring example. It explains the records the workflow should rely on; it is not a live introspection of an imported database and does not apply schema changes.</p></div>
+
+      <div className="erd-legend" aria-label="Entity relationship diagram legend">
+        <strong>Legend</strong>
+        <span><b>PK</b> Primary key</span>
+        <span><b>FK</b> Foreign key</span>
+        <span><b>UQ</b> Unique value</span>
+        <span><code>1</code> Exactly one</span>
+        <span><code>0..*</code> Zero or many</span>
+        <span><code>1..*</code> One or many</span>
+      </div>
+
+      <figure className="erd-diagram" aria-labelledby="erd-relationships-title">
+        <figcaption><span className="section-kicker">RELATIONSHIP MAP</span><h3 id="erd-relationships-title">Read each relationship from left to right</h3></figcaption>
+        <div className="erd-relationship-list">
+          {appEntityRelationships.map((relationship) => (
+            <div className="erd-relationship-row" key={`${relationship.from}-${relationship.to}`}>
+              <div className="erd-relationship-path">
+                <div className="erd-entity-reference"><span>ENTITY</span><strong>{relationship.from}</strong></div>
+                <div className="erd-connector" aria-label={`${relationship.fromCount} ${relationship.verb} ${relationship.toCount}`}>
+                  <b>{relationship.fromCount}</b><i aria-hidden="true" /><em>{relationship.verb}</em><i aria-hidden="true" /><b>{relationship.toCount}</b>
+                </div>
+                <div className="erd-entity-reference"><span>ENTITY</span><strong>{relationship.to}</strong></div>
+              </div>
+              <p>{relationship.detail}</p>
+            </div>
+          ))}
+        </div>
+      </figure>
+
+      <div className="erd-dictionary-heading"><div><span className="section-kicker">ENTITY DICTIONARY</span><h3>Fields, keys, and responsibilities</h3></div><p>These details turn the relationship map into a practical reference for APIs, validation, ownership checks, and database constraints.</p></div>
+      <div className="erd-entity-grid">
+        {appEntities.map((entity) => (
+          <article className="erd-entity-card" key={entity.name}>
+            <header><div><span>ENTITY</span><h4>{entity.name}</h4></div><code>{entity.tableName}</code></header>
+            <p>{entity.purpose}</p>
+            <ul aria-label={`${entity.name} fields`}>
+              {entity.fields.map((field) => (
+                <li key={field.name}>
+                  <div>{field.key ? <b className={`erd-key ${field.key.toLowerCase()}`}>{field.key}</b> : <b className="erd-key empty" aria-hidden="true">—</b>}<code>{field.name}</code><span>{field.type}</span></div>
+                  <small>{field.detail}</small>
+                </li>
+              ))}
+            </ul>
+          </article>
+        ))}
+      </div>
+
+      <div className="erd-integrity-grid">
+        <article><span aria-hidden="true">⌁</span><div><h3>Referential integrity</h3><p>Foreign keys should reject missing parents. Deleting customers, products, or orders needs an explicit restrict, archive, or cascade policy so important history cannot disappear accidentally.</p></div></article>
+        <article><span aria-hidden="true">◇</span><div><h3>Historical integrity</h3><p>Store unit prices, discounts, fees, rule versions, and payment amounts as immutable order snapshots. A later catalog or pricing-rule edit must never rewrite a completed purchase.</p></div></article>
+        <article><span aria-hidden="true">⊘</span><div><h3>Safety constraints</h3><p>Require positive quantities, non-negative totals, unique provider and idempotency identifiers, valid status transitions, tenant-scoped reads, and atomic order/payment updates.</p></div></article>
+      </div>
+    </section>
   );
 }
 

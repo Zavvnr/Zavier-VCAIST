@@ -180,7 +180,7 @@ test("explains every workspace view immediately below its tab", async () => {
   assert.match(source, /Understand the platform before exploring the app/);
   assert.match(source, /See every page before deciding what to change/);
   assert.match(source, /See which business rules move the numbers/);
-  assert.match(source, /Follow one customer action through the app/);
+  assert.match(source, /Follow the workflow, source code, and data relationships/);
   assert.match(source, /Review safety from customer input to system architecture/);
   assert.match(source, /<WorkspaceViewIntroduction view=\{view\} \/>/);
   assert.match(source, /<WorkspaceViewIntroduction view=\{view\} \/> : null\}\s*\{projectReady && view === "overview" \? <ProgramOverview \/> : null\}\s*\{projectConnected \?/);
@@ -211,7 +211,7 @@ test("keeps Current Application focused on its consent-first page carousel", asy
 test("opens App Map steps in a read-only source workspace", async () => {
   const source = await readFile(new URL("../app/Dashboard.tsx", import.meta.url), "utf8");
   const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
-  assert.match(source, /Select any diagram step to open its source in the read-only workspace below/);
+  assert.match(source, /Inspect workflow source, read the entity relationship diagram/);
   assert.match(source, /className=\{selectedStep === index \? "flow-step selected" : "flow-step"\}/);
   assert.match(source, /onClick=\{\(\) => setSelectedStep\(index\)\}/);
   assert.match(source, /<SourceCodeWorkspace selectedStep=\{selectedStep\} onSelect=\{setSelectedStep\} \/>/);
@@ -219,6 +219,22 @@ test("opens App Map steps in a read-only source workspace", async () => {
   assert.match(source, /This workspace can inspect files, but it cannot edit or save them/);
   assert.match(css, /\.source-workspace \{[\s\S]*?background: var\(--surface-soft\);/);
   assert.match(css, /\.source-code-line\.highlighted \{[\s\S]*?var\(--blue-soft\)/);
+});
+
+test("documents entities and directs visible program errors to Safety Tests", async () => {
+  const source = await readFile(new URL("../app/Dashboard.tsx", import.meta.url), "utf8");
+  const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  assert.match(source, /What is an entity relationship diagram\?/);
+  assert.match(source, /cardinality[\s\S]*0\.\.\*[\s\S]*1\.\.\*/);
+  assert.match(source, /Customer[\s\S]*Order Item[\s\S]*Payment Attempt[\s\S]*Pricing Rule[\s\S]*Applied Pricing Rule/);
+  assert.match(source, /RELATIONSHIP MAP[\s\S]*ENTITY DICTIONARY[\s\S]*Referential integrity[\s\S]*Historical integrity[\s\S]*Safety constraints/);
+  assert.match(source, /PROGRAM ERROR DETECTED/);
+  assert.match(source, /className="map-diagnostic-alert error" role="alert"/);
+  assert.match(source, /Runtime <strong>[\s\S]*Compile-time <strong>/);
+  assert.match(source, /onClick=\{onOpenSafetyTests\}>Open Safety Tests/);
+  assert.match(source, /setView\("tests"\)/);
+  assert.match(css, /\.map-diagnostic-alert\.error \{[\s\S]*?border: 2px solid var\(--coral\);/);
+  assert.match(css, /\.erd-section \{[\s\S]*?grid-column: 1 \/ -1;/);
 });
 
 test("presents system-wide safety and security findings as an interactive list", async () => {
