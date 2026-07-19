@@ -267,6 +267,9 @@ test("presents system-wide safety and security findings as an interactive list",
   assert.match(source, /Critical risks appear before high and medium findings; verified protections stay at the bottom/);
   assert.match(css, /\.safety-finding-list button\.selected \{[\s\S]*?var\(--coral-soft\)/);
   assert.match(css, /\.safety-detail-panel \{[\s\S]*?position: sticky;/);
+  assert.match(css, /--verified-green: #61d6a5;/);
+  assert.match(css, /\.finding-severity-icon\.verified \{ color: var\(--verified-green-contrast\); background: var\(--verified-green\); \}/);
+  assert.match(css, /\.finding-severity-pill\.verified \{[\s\S]*?color: var\(--verified-green\);[\s\S]*?background: var\(--verified-green-soft\);/);
 });
 
 test("preserves the original README roadmap and core-loop brief", async () => {
