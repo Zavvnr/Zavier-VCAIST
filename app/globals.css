@@ -523,6 +523,7 @@ strong {
 .view-introduction {
   --view-accent: var(--green);
   --view-soft: var(--green-soft);
+  --view-contrast: var(--accent-contrast);
   display: grid;
   grid-template-columns: 44px minmax(0, 1fr) minmax(210px, 0.52fr);
   align-items: start;
@@ -536,8 +537,9 @@ strong {
 }
 
 .view-introduction.compare {
-  --view-accent: var(--green);
-  --view-soft: var(--green-soft);
+  --view-accent: var(--verified-green);
+  --view-soft: var(--verified-green-soft);
+  --view-contrast: var(--verified-green-contrast);
 }
 
 .view-introduction.application {
@@ -560,7 +562,7 @@ strong {
   place-items: center;
   width: 44px;
   height: 44px;
-  color: var(--accent-contrast);
+  color: var(--view-contrast);
   font-size: 17px;
   font-weight: 850;
   background: var(--view-accent);
