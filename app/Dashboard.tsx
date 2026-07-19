@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { AppChrome } from "./components/AppChrome";
 import { ImportProjectDialog } from "./components/ImportProjectDialog";
 import type { ImportedProject } from "@/lib/import-sources";
@@ -11,14 +11,9 @@ import {
   writePreferences,
   type ModelId,
 } from "@/lib/preferences";
-import {
-  calculateBusinessSnapshot,
-  defaultKnobs,
-  stressTest,
-  type PricingKnobs,
-} from "@/lib/pricing";
+import { defaultKnobs, stressTest, type PricingKnobs } from "@/lib/pricing";
 
-type WorkspaceView = "overview" | "application" | "controls" | "map" | "tests";
+type WorkspaceView = "overview" | "application" | "compare" | "map" | "tests";
 
 const workspaceViewGuides: Record<WorkspaceView, {
   eyebrow: string;
@@ -29,7 +24,7 @@ const workspaceViewGuides: Record<WorkspaceView, {
   overview: {
     eyebrow: "OVERVIEW · START HERE",
     title: "Understand the platform before exploring the app",
-    description: "This page explains what VCAIST is for, summarizes every platform feature, and follows one app owner through the complete safe-analysis story. Application pages, metrics, simulations, findings, and controls now live in Current Application.",
+    description: "This page explains what VCAIST is for, summarizes every platform feature, and follows one app owner through the complete safe-analysis story. Application pages live in Current Application, while side-by-side interface review lives in Compare.",
     actions: ["Understand the purpose", "Review every feature", "Follow the example story"],
   },
   application: {
@@ -38,11 +33,11 @@ const workspaceViewGuides: Record<WorkspaceView, {
     description: "This page presents the connected application as a page-by-page carousel and offers an AI change assistant that must ask for permission before it can help plan an edit.",
     actions: ["Browse every detected page", "Choose a page to discuss", "Approve AI help before chatting"],
   },
-  controls: {
-    eyebrow: "CONTROLS · SAFE EXPERIMENTS",
-    title: "See which business rules move the numbers",
-    description: "This page gathers prices, discounts, thresholds, and fees into safe controls. Change one value at a time and watch the forecast update without editing source code or affecting live customers.",
-    actions: ["Adjust one rule", "Watch the forecast change", "Reset the sample safely"],
+  compare: {
+    eyebrow: "COMPARE · INTERFACE TO INTERFACE",
+    title: "Compare your current app with another app",
+    description: "This page places two application interfaces side by side. Keep your connected app on the left, choose a second app from a local folder, Google Drive, or GitHub, and move through each page carousel independently.",
+    actions: ["Keep your current app visible", "Choose a second app", "Compare every page"],
   },
   map: {
     eyebrow: "APP MAP · FOLLOW THE FLOW",
@@ -89,12 +84,6 @@ function rememberScan(project: ImportedProject) {
   }
 }
 
-const money = new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "USD",
-  maximumFractionDigits: 0,
-});
-
 const preciseMoney = new Intl.NumberFormat("en-US", {
   style: "currency",
   currency: "USD",
@@ -104,14 +93,14 @@ const preciseMoney = new Intl.NumberFormat("en-US", {
 const viewOptions: Array<{ id: WorkspaceView; label: string }> = [
   { id: "overview", label: "Overview" },
   { id: "application", label: "Current Application" },
-  { id: "controls", label: "Controls" },
+  { id: "compare", label: "Compare" },
   { id: "map", label: "App map" },
   { id: "tests", label: "Safety tests" },
 ];
 
 export function Dashboard({ startWithImporter = false }: { startWithImporter?: boolean }) {
   const [view, setView] = useState<WorkspaceView>("overview");
-  const [knobs, setKnobs] = useState<PricingKnobs>(defaultKnobs);
+  const [knobs] = useState<PricingKnobs>(defaultKnobs);
   const [model, setModel] = useState<ModelId>(defaultPreferences.model);
   const [scanning, setScanning] = useState(false);
   const [scanCacheHit, setScanCacheHit] = useState(false);
@@ -120,6 +109,8 @@ export function Dashboard({ startWithImporter = false }: { startWithImporter?: b
   );
   const [mapMode, setMapMode] = useState<"plain" | "technical">("plain");
   const [importOpen, setImportOpen] = useState(startWithImporter);
+  const [comparisonImportOpen, setComparisonImportOpen] = useState(false);
+  const [comparisonProject, setComparisonProject] = useState<ImportedProject | null>(null);
   const [project, setProject] = useState<ImportedProject>(startWithImporter
     ? {
         name: "Your project",
@@ -145,13 +136,8 @@ export function Dashboard({ startWithImporter = false }: { startWithImporter?: b
     setModel(readPreferences().model);
   }, []);
 
-  const snapshot = useMemo(() => calculateBusinessSnapshot(knobs), [knobs]);
   const testResults = useMemo(() => stressTest(knobs), [knobs]);
   const runtimeErrorCount = testResults.filter((result) => !result.passed).length;
-
-  function updateKnob<K extends keyof PricingKnobs>(key: K, value: number) {
-    setKnobs((current) => ({ ...current, [key]: value }));
-  }
 
   function updateModel(nextModel: ModelId) {
     setModel(nextModel);
@@ -273,7 +259,7 @@ export function Dashboard({ startWithImporter = false }: { startWithImporter?: b
             <span className="notice-complete-icon" aria-hidden="true">✓</span>
             <div>
               <strong>Source-file indexing is complete. Nothing is still loading.</strong>
-              <span>Project-specific AI extraction is not available in this prototype. The financial controls below are the guided practice sample, not controls found in {project.name}.</span>
+              <span>Project-specific AI extraction and page rendering are not available in this prototype. The application carousels use guided interface previews labeled with the projects you select.</span>
               <small>{scanCacheHit
                 ? "This folder matched the private cache on this device, so repeat indexing was skipped."
                 : "This project fingerprint is now cached privately on this device for faster repeat loads."}</small>
@@ -285,8 +271,12 @@ export function Dashboard({ startWithImporter = false }: { startWithImporter?: b
           <CurrentApplication project={project} />
         ) : null}
 
-        {projectReady && view === "controls" ? (
-          <Controls knobs={knobs} updateKnob={updateKnob} snapshot={snapshot} reset={() => setKnobs(defaultKnobs)} />
+        {projectReady && view === "compare" ? (
+          <CompareApplications
+            currentProject={project}
+            comparisonProject={comparisonProject}
+            onChooseComparison={() => setComparisonImportOpen(true)}
+          />
         ) : null}
 
         {projectReady && view === "map" ? (
@@ -312,6 +302,18 @@ export function Dashboard({ startWithImporter = false }: { startWithImporter?: b
           }}
         />
       ) : null}
+      {comparisonImportOpen ? (
+        <ImportProjectDialog
+          eyebrow="COMPARISON APPLICATION"
+          title="Which app would you like to compare?"
+          description="Choose a local folder, Google Drive folder, or public GitHub repository. Your current application stays connected."
+          onClose={() => setComparisonImportOpen(false)}
+          onImport={(nextProject) => {
+            setComparisonProject(nextProject);
+            setComparisonImportOpen(false);
+          }}
+        />
+      ) : null}
     </AppChrome>
   );
 }
@@ -321,7 +323,7 @@ function WorkspaceViewIntroduction({ view }: { view: WorkspaceView }) {
   const viewMarks: Record<WorkspaceView, string> = {
     overview: "◎",
     application: "▦",
-    controls: "↔",
+    compare: "⇄",
     map: "⌁",
     tests: "!",
   };
@@ -382,22 +384,6 @@ type ChatMessage = { role: "assistant" | "user"; text: string };
 function ApplicationCarousel({ project }: { project: ImportedProject }) {
   const [activeIndex, setActiveIndex] = useState(0);
   const activePage = applicationPages[activeIndex];
-  const isGuidedDemo = project.source === "demo";
-
-  function movePage(direction: number) {
-    setActiveIndex((current) => (current + direction + applicationPages.length) % applicationPages.length);
-  }
-
-  function handleKeyDown(event: KeyboardEvent<HTMLElement>) {
-    if (event.key === "ArrowLeft") {
-      event.preventDefault();
-      movePage(-1);
-    }
-    if (event.key === "ArrowRight") {
-      event.preventDefault();
-      movePage(1);
-    }
-  }
 
   return (
     <section className="panel current-application-panel" aria-labelledby="application-carousel-title">
@@ -413,59 +399,148 @@ function ApplicationCarousel({ project }: { project: ImportedProject }) {
       </div>
 
       <div className="application-carousel-layout">
-        <div className="application-carousel-column">
-          <div
-            className="application-carousel-stage"
-            tabIndex={0}
-            onKeyDown={handleKeyDown}
-            aria-roledescription="carousel"
-            aria-label={`${project.name} application pages`}
-          >
-            <div className="application-browser-bar" aria-hidden="true">
-              <span className="browser-dots"><i /><i /><i /></span>
-              <span className="browser-address">{project.name.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "application"}.app{activePage.route}</span>
-              <span className="browser-live">Preview</span>
-            </div>
-            <div className="application-page-live" aria-live="polite" aria-atomic="true">
-              <ApplicationPagePreview page={activePage} projectName={project.name} />
-            </div>
-          </div>
-
-          <div className="carousel-controls">
-            <button type="button" className="carousel-arrow" onClick={() => movePage(-1)} aria-label="Show previous application page">←</button>
-            <div>
-              <strong>{activePage.name}</strong>
-              <span>Page {activeIndex + 1} of {applicationPages.length} · {activePage.purpose}</span>
-            </div>
-            <button type="button" className="carousel-arrow" onClick={() => movePage(1)} aria-label="Show next application page">→</button>
-          </div>
-
-          <div className="application-page-list" role="tablist" aria-label="All application pages">
-            {applicationPages.map((page, index) => (
-              <button
-                type="button"
-                key={page.id}
-                className={index === activeIndex ? "application-page-tab active" : "application-page-tab"}
-                onClick={() => setActiveIndex(index)}
-                role="tab"
-                aria-selected={index === activeIndex}
-              >
-                <span>{String(index + 1).padStart(2, "0")}</span>
-                <div><strong>{page.name}</strong><small>{page.route}</small></div>
-              </button>
-            ))}
-          </div>
-
-          <p className="application-preview-boundary">
-            {isGuidedDemo
-              ? "This carousel shows all four pages in the bundled ShopSpring practice application."
-              : `VCAIST found ${project.fileCount} supported files in ${project.name}. The four-page commerce preview remains the guided sample until project-specific page rendering is connected.`}
-          </p>
-        </div>
+        <ApplicationInterfaceCarousel project={project} activeIndex={activeIndex} onPageChange={setActiveIndex} contextLabel="Preview" />
 
         <AiChangeAssistant page={activePage} projectName={project.name} />
       </div>
     </section>
+  );
+}
+
+function ApplicationInterfaceCarousel({
+  project,
+  activeIndex,
+  onPageChange,
+  contextLabel,
+  compact = false,
+}: {
+  project: ImportedProject;
+  activeIndex: number;
+  onPageChange: (index: number) => void;
+  contextLabel: string;
+  compact?: boolean;
+}) {
+  const activePage = applicationPages[activeIndex];
+  const isGuidedDemo = project.source === "demo";
+
+  function movePage(direction: number) {
+    onPageChange((activeIndex + direction + applicationPages.length) % applicationPages.length);
+  }
+
+  function handleKeyDown(event: KeyboardEvent<HTMLElement>) {
+    if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      movePage(-1);
+    }
+    if (event.key === "ArrowRight") {
+      event.preventDefault();
+      movePage(1);
+    }
+  }
+
+  return (
+    <div className={compact ? "application-carousel-column compact" : "application-carousel-column"}>
+      <div
+        className="application-carousel-stage"
+        tabIndex={0}
+        onKeyDown={handleKeyDown}
+        aria-roledescription="carousel"
+        aria-label={`${project.name} application pages`}
+      >
+        <div className="application-browser-bar" aria-hidden="true">
+          <span className="browser-dots"><i /><i /><i /></span>
+          <span className="browser-address">{project.name.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "application"}.app{activePage.route}</span>
+          <span className="browser-live">{contextLabel}</span>
+        </div>
+        <div className="application-page-live" aria-live="polite" aria-atomic="true">
+          <ApplicationPagePreview page={activePage} projectName={project.name} />
+        </div>
+      </div>
+
+      <div className="carousel-controls">
+        <button type="button" className="carousel-arrow" onClick={() => movePage(-1)} aria-label={`Show previous page in ${project.name}`}>←</button>
+        <div>
+          <strong>{activePage.name}</strong>
+          <span>Page {activeIndex + 1} of {applicationPages.length} · {activePage.purpose}</span>
+        </div>
+        <button type="button" className="carousel-arrow" onClick={() => movePage(1)} aria-label={`Show next page in ${project.name}`}>→</button>
+      </div>
+
+      <div className="application-page-list" role="tablist" aria-label={`All pages in ${project.name}`}>
+        {applicationPages.map((page, index) => (
+          <button
+            type="button"
+            key={page.id}
+            className={index === activeIndex ? "application-page-tab active" : "application-page-tab"}
+            onClick={() => onPageChange(index)}
+            role="tab"
+            aria-selected={index === activeIndex}
+          >
+            <span>{String(index + 1).padStart(2, "0")}</span>
+            <div><strong>{page.name}</strong><small>{page.route}</small></div>
+          </button>
+        ))}
+      </div>
+
+      {!compact ? (
+        <p className="application-preview-boundary">
+          {isGuidedDemo
+            ? "This carousel shows all four pages in the bundled ShopSpring practice application."
+            : `VCAIST found ${project.fileCount} supported files in ${project.name}. The four-page commerce preview remains the guided sample until project-specific page rendering is connected.`}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function CompareApplications({
+  currentProject,
+  comparisonProject,
+  onChooseComparison,
+}: {
+  currentProject: ImportedProject;
+  comparisonProject: ImportedProject | null;
+  onChooseComparison: () => void;
+}) {
+  return (
+    <section className="panel compare-applications-panel" aria-labelledby="compare-applications-title">
+      <div className="compare-applications-heading">
+        <div><span className="section-kicker">SIDE-BY-SIDE INTERFACES</span><h2 id="compare-applications-title">Compare two applications page by page</h2><p>Each side is an independent carousel. Move through Home, Catalog, Cart, and Checkout to compare structure, hierarchy, and customer flow without changing either project.</p></div>
+        <button type="button" className={comparisonProject ? "button ghost" : "button dark"} onClick={onChooseComparison}>{comparisonProject ? "Choose another app" : "Choose comparison app"} <span aria-hidden="true">＋</span></button>
+      </div>
+
+      <div className="compare-carousel-grid">
+        <ComparisonAppCarousel project={currentProject} label="Current application" contextLabel="Current" />
+        {comparisonProject ? (
+          <ComparisonAppCarousel project={comparisonProject} label="Comparison application" contextLabel="Compare" />
+        ) : (
+          <article className="comparison-app-empty" aria-labelledby="comparison-empty-title">
+            <span className="comparison-empty-mark" aria-hidden="true">⇄</span>
+            <span className="section-kicker">ADD A SECOND APPLICATION</span>
+            <h3 id="comparison-empty-title">What would you like to compare with {currentProject.name}?</h3>
+            <p>Select another project. Your current application stays connected and neither source is changed.</p>
+            <button type="button" className="button dark" onClick={onChooseComparison}>Choose comparison app <span aria-hidden="true">→</span></button>
+            <div className="comparison-source-options" aria-label="Comparison project sources"><span>⌁ Local folder</span><span>△ Google Drive</span><span>GH GitHub</span></div>
+          </article>
+        )}
+      </div>
+
+      <div className="comparison-preview-note" role="note"><span aria-hidden="true">i</span><p><strong>Prototype preview</strong>The selected project names and source-file counts are real. Until project-specific rendering is connected, both carousels use the same four guided commerce-page templates so the comparison interaction can be tested safely.</p></div>
+    </section>
+  );
+}
+
+function ComparisonAppCarousel({ project, label, contextLabel }: { project: ImportedProject; label: string; contextLabel: string }) {
+  const [activeIndex, setActiveIndex] = useState(0);
+
+  return (
+    <article className="comparison-app-card">
+      <header className="comparison-app-heading">
+        <div><span>{label}</span><h3>{project.name}</h3><p>{project.sourceLabel} · {project.fileCount} source files</p></div>
+        <span className="comparison-page-count">{applicationPages.length} pages</span>
+      </header>
+      <ApplicationInterfaceCarousel project={project} activeIndex={activeIndex} onPageChange={setActiveIndex} contextLabel={contextLabel} compact />
+    </article>
   );
 }
 
@@ -637,8 +712,8 @@ const programFeatures = [
   ["Choose your source", "Start with a local folder, a Google Drive folder, or a public GitHub repository."],
   ["Index files clearly", "See an explicit first-load progress state, completion message, and faster repeat checks for unchanged folders."],
   ["Compare AI models", "Choose among Frontier, Workhorse, and Efficient models from OpenAI, Anthropic, Google, Moonshot AI, and Alibaba Cloud."],
-  ["Find business controls", "Surface prices, fees, discounts, thresholds, and other values that affect how the app behaves."],
-  ["Experiment safely", "Move responsive sliders and re-run the sample app logic in a private sandbox without touching live customers."],
+  ["Compare application interfaces", "Keep the current app visible while browsing every page of a second app in an independent carousel."],
+  ["Choose either app source", "Select the comparison app from a local folder, Google Drive, or a public GitHub repository without replacing the current app."],
   ["Follow the app map", "Switch between a plain-English customer journey and technical source, then read a simple entity relationship diagram and open red-highlighted errors in Safety Tests."],
   ["Review system-wide safety", "Combine real boundary runs with guided review of input limits, abuse controls, authorization, payments, resilience, and information exposure."],
   ["Keep human approval", "Review explanations and proposed remedies first. This prototype never publishes a code change automatically."],
@@ -690,71 +765,13 @@ function ProgramOverview() {
           </p>
           <ol>
             <li><strong>Orient:</strong> Maya reads the plain-English app map and sees where checkout, pricing, and shipping connect.</li>
-            <li><strong>Experiment:</strong> She adjusts the sample discount and shipping controls, watching revenue and order totals update immediately.</li>
+            <li><strong>Compare:</strong> She keeps her current app open, chooses another project, and browses matching pages in two independent carousels.</li>
             <li><strong>Catch a surprise:</strong> A zero-item safety test produces a negative total because shipping is subtracted from an empty order.</li>
             <li><strong>Act with context:</strong> Maya shares the explanation and exact failing case with her developer. Nothing is published without approval.</li>
           </ol>
         </div>
       </aside>
     </section>
-  );
-}
-
-function Controls({
-  knobs, updateKnob, snapshot, reset,
-}: {
-  knobs: PricingKnobs;
-  updateKnob: <K extends keyof PricingKnobs>(key: K, value: number) => void;
-  snapshot: ReturnType<typeof calculateBusinessSnapshot>;
-  reset: () => void;
-}) {
-  return (
-    <div className="controls-layout">
-      <section className="panel control-list">
-        <div className="panel-heading horizontal">
-          <div>
-            <span className="section-kicker">YOUR APP'S KNOBS</span>
-            <h2>Try a business change</h2>
-            <p>Move a slider. The preview updates instantly, but your app stays untouched.</p>
-          </div>
-          <button className="button ghost small" onClick={reset}>Reset values</button>
-        </div>
-        <FullKnob title="Price per item" description="What one product costs before discounts." value={knobs.basePrice} displayValue={`$${knobs.basePrice}`} min={20} max={80} prefix="$" onChange={(value) => updateKnob("basePrice", value)} />
-        <FullKnob title="Bulk discount" description={`Taken off when someone buys ${knobs.discountThreshold} or more.`} value={knobs.discountRate} displayValue={`${knobs.discountRate}%`} min={0} max={40} suffix="%" onChange={(value) => updateKnob("discountRate", value)} />
-        <FullKnob title="Bulk discount starts at" description="The number of items needed to unlock the discount." value={knobs.discountThreshold} displayValue={`${knobs.discountThreshold} items`} min={2} max={12} suffix=" items" onChange={(value) => updateKnob("discountThreshold", value)} />
-        <FullKnob title="Shipping fee" description="The amount added to every delivery in the intended rule." value={knobs.shippingFee} displayValue={preciseMoney.format(knobs.shippingFee)} min={0} max={15} step={0.5} prefix="$" onChange={(value) => updateKnob("shippingFee", value)} />
-      </section>
-
-      <aside className="panel sticky-preview">
-        <span className="section-kicker">LIVE OUTLOOK</span><h2>Your new forecast</h2>
-        <div className="forecast-number">{money.format(snapshot.revenue)}</div><p>estimated monthly revenue</p>
-        <div className="forecast-row"><span>Typical order</span><strong>{preciseMoney.format(snapshot.averageOrder)}</strong></div>
-        <div className="forecast-row"><span>Estimated margin</span><strong>{snapshot.margin.toFixed(1)}%</strong></div>
-        <div className="forecast-row"><span>Orders modeled</span><strong>{snapshot.monthlyOrders}</strong></div>
-        <div className="sandbox-caption"><span aria-hidden="true">◇</span>This is a private simulation. Publish controls will arrive in a later version.</div>
-      </aside>
-    </div>
-  );
-}
-
-function FullKnob({
-  title, description, value, displayValue, min, max, step = 1, prefix = "", suffix = "", onChange,
-}: {
-  title: string; description: string; value: number; displayValue: string; min: number; max: number;
-  step?: number; prefix?: string; suffix?: string; onChange: (value: number) => void;
-}) {
-  return (
-    <div className="full-knob">
-      <div className="full-knob-copy">
-        <div><h3>{title}</h3><p>{description}</p></div><output>{displayValue}</output>
-      </div>
-      <input
-        className="range-input" aria-label={title} type="range" value={value} min={min} max={max} step={step}
-        onChange={(event) => onChange(Number(event.target.value))}
-        style={{ "--range-progress": `${((value - min) / (max - min)) * 100}%` } as CSSProperties}
-      />
-      <div className="range-ends"><span>{prefix}{min}{suffix}</span><span>{prefix}{max}{suffix}</span></div>
-    </div>
   );
 }
 

@@ -14,16 +14,16 @@ const tutorialSteps = [
   {
     id: 1,
     eyebrow: "UNDERSTAND",
-    title: "See the important rules",
-    description: "VCAIST finds prices, fees, limits, and other business controls, then explains what each one changes in everyday language.",
+    title: "See every application page",
+    description: "Browse the current application in a page carousel so you can understand its interface and customer journey before comparing it.",
     time: "About 1 minute",
   },
   {
     id: 2,
-    eyebrow: "EXPERIMENT",
-    title: "Try changes in a safe sandbox",
-    description: "Move a slider and watch the real app logic run with your new value. Live customers and production data are never involved.",
-    time: "Try as many times as you like",
+    eyebrow: "COMPARE",
+    title: "Choose another app to compare",
+    description: "Keep your current app visible, connect a second app, and move through each interface carousel independently.",
+    time: "Compare as many pages as you like",
   },
   {
     id: 3,
@@ -168,7 +168,7 @@ export function Onboarding() {
           </div>
           <div className="purpose-grid">
             <article><span className="purpose-icon green" aria-hidden="true">◎</span><h3>See how it works</h3><p>Follow a visual map from what a customer does to the code and services that respond.</p><small>Plain-English and technical views</small></article>
-            <article><span className="purpose-icon blue" aria-hidden="true">↔</span><h3>Explore business controls</h3><p>Adjust prices, thresholds, and fees in a sandbox, then see the real output change.</p><small>Your live app stays untouched</small></article>
+            <article><span className="purpose-icon blue" aria-hidden="true">↔</span><h3>Compare two applications</h3><p>Keep your current interface visible while browsing every page of another app you choose.</p><small>Side-by-side page carousels</small></article>
             <article><span className="purpose-icon coral" aria-hidden="true">!</span><h3>Find surprises early</h3><p>Review business errors, input limits, abuse controls, authorization, payments, and resilience in one understandable risk list.</p><small>Behavior and system-design safety</small></article>
           </div>
         </section>
@@ -216,23 +216,20 @@ function TutorialPreview({ step }: { step: number }) {
 
   if (step === 1) {
     return (
-      <div className="lesson-preview controls-lesson-preview" aria-label="Business controls found">
-        <div className="lesson-found"><span>✓</span><p><strong>4 business controls found</strong><small>Explained in plain English</small></p></div>
-        <div className="lesson-control"><span>Price per item</span><b>$49</b><i><em style={{ width: "58%" }} /></i></div>
-        <div className="lesson-control"><span>Bulk discount</span><b>20%</b><i><em style={{ width: "42%" }} /></i></div>
-        <div className="lesson-control"><span>Shipping fee</span><b>$6.99</b><i><em style={{ width: "35%" }} /></i></div>
+      <div className="lesson-preview app-pages-lesson-preview" aria-label="Current application page carousel">
+        <div className="lesson-mini-browser"><span /><span>shopspring.app</span><b>PREVIEW</b></div>
+        <div className="lesson-page-canvas"><small>HOME</small><strong>Make everyday rituals feel considered.</strong><i /></div>
+        <div className="lesson-page-tabs"><b>Home</b><span>Catalog</span><span>Cart</span><span>Checkout</span></div>
       </div>
     );
   }
 
   if (step === 2) {
     return (
-      <div className="lesson-preview simulation-preview" aria-label="Safe order simulation">
-        <div className="simulation-heading"><span>LIVE SANDBOX</span><b>Safe to try</b></div>
-        <div className="simulation-quantity"><span>Items in test order</span><strong>3</strong></div>
-        <div className="simulation-slider"><i /></div>
-        <div className="simulation-total"><span>Customer would pay</span><strong>$140.01</strong></div>
-        <div className="simulation-note"><span>◇</span>Live customers are not affected</div>
+      <div className="lesson-preview comparison-lesson-preview" aria-label="Two application interfaces side by side">
+        <div><small>CURRENT APP</small><strong>ShopSpring</strong><i /><span>Home · 1 of 4</span></div>
+        <b aria-hidden="true">⇄</b>
+        <div><small>COMPARISON APP</small><strong>Your choice</strong><i className="alternate" /><span>Home · 1 of 4</span></div>
       </div>
     );
   }

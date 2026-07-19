@@ -2,13 +2,14 @@
 
 VCAIST is a plain-English code-intelligence platform for people who own an app but do not want to become software engineers to understand it.
 
-The current prototype demonstrates the complete product loop with a sample commerce app: connect project files, discover business controls, run the app's pricing logic in a safe simulation, and reveal a real edge-case defect in understandable terms.
+The current prototype demonstrates a safe application-understanding loop with a sample commerce app: connect project files, browse the application interface, compare it with another selected project, inspect its workflow and data model, and reveal a real edge-case defect in understandable terms.
 
 ## What it does
 
 - Explains an app's workflow as both a plain-English and technical map, then summarizes its core data model in a simple entity relationship diagram.
 - Finds adjustable business values such as prices, discounts, thresholds, and fees.
 - Lets users choose a local project folder, a Google Drive folder, or a public GitHub repository as the project source.
+- Keeps the current app connected while users choose a second local, Google Drive, or GitHub project for side-by-side interface comparison.
 - Connects those values to responsive controls that re-run the sample app logic immediately.
 - Combines executed business-logic checks with guided system-design and security review, then translates every risk into understandable impact and protection guidance.
 - Keeps humans in the loop. This prototype never publishes a code change.
@@ -69,11 +70,11 @@ The interface uses a desktop sidebar, fluid content grids, touch-friendly contro
 
 - **Guided welcome page** — explains what VCAIST is for, walks through its four-step safety loop, and offers both a demo and a direct path into the user's own project.
 - **Direct workspace** — skips the tutorial and demo, opens the project-source chooser immediately, and accepts a local folder, Google Drive folder, or public GitHub repository.
-- **Workspace views** — Overview, Current Application, Controls, App map, and Safety tests each begin with a plain-language explanation of the page and three useful actions. Overview contains the program summary, complete feature index, and end-to-end example story.
+- **Workspace views** — Overview, Current Application, Compare, App map, and Safety tests each begin with a plain-language explanation of the page and three useful actions. Overview contains the program summary, complete feature index, and end-to-end example story.
 - **Current Application** — focuses only on the connected app itself: a responsive four-page application carousel and a consent-first AI change chat. Users can browse every guided application page with buttons or arrow keys. The assistant stays locked until the user grants permission, and it asks for separate approval before recording a sandbox draft request. Financial metrics, sandbox results, safety findings, and business controls are intentionally excluded from this page.
 - **Project importer** — one source chooser for local directories, Google Drive folders, and public GitHub repositories, with an explicit indexing state and clear completion message.
 - **Device-local scan cache** — fingerprints supported file metadata so an unchanged project can skip repeat indexing on the same browser for 30 days. Source contents are never stored in the cache, and browsers still require the user to select a local folder again for privacy.
-- **Business controls** — four sliders bound to the sample app's price, discount, discount threshold, and shipping fee.
+- **Compare** — keeps the connected app visible in its own four-page carousel and lets the user select a second app from a local folder, Google Drive, or GitHub. The comparison app opens in an independent carousel so matching pages can be reviewed side by side. The prototype labels the selected projects honestly and uses guided commerce-page templates until project-specific interface rendering is connected.
 - **Live sandbox** — re-runs the connected pricing function without touching live customers or production data.
 - **App map** — toggles between a plain-English purchase flow and the corresponding technical path. Every workflow step opens its mapped file in a line-numbered, read-only source workspace. A simplified conceptual entity relationship diagram uses rectangles for the four core entities, diamonds for relationships, ovals for important attributes, and one/many cardinality labels. A failing workflow module and its source file are highlighted in red, followed by a warning beneath the diagram with a direct link to Safety Tests. The longer entity dictionary has been removed.
 - **Safety tests** — presents a searchable, clickable system-wide findings list instead of only customer-facing edge cases. It combines the executed zero-quantity pricing check with guided code and architecture review for input-length limits, rate limiting, client/server trust boundaries, payment idempotency, object authorization, error disclosure, and webhook verification. Every finding opens full evidence, failure or attack scenarios, affected systems, and recommended protections.
@@ -96,7 +97,7 @@ The interface uses a desktop sidebar, fluid content grids, touch-friendly contro
 
 ### Current boundaries
 
-Folder and repository imports are session-only: local files stay in the browser, GitHub imports read the public repository tree, and Google Drive uses an in-memory read-only access token. The interface clearly distinguishes completed source-file indexing from project-specific AI analysis. Extracted business controls, the four-page carousel, and security architecture findings still use the bundled ShopSpring fixture; only the pricing boundary test executes real fixture code. No background AI job continues after indexing finishes. The change assistant demonstrates the complete consent flow and records sandbox approval locally, but it does not edit connected source files. AI-powered repository analysis, project-specific rendering and security testing, durable project storage, private GitHub access, patch generation, and approval-based publishing are the next backend milestones.
+Folder and repository imports are session-only: local files stay in the browser, GitHub imports read the public repository tree, and Google Drive uses an in-memory read-only access token. The interface clearly distinguishes completed source-file indexing from project-specific AI analysis. Current Application and Compare use guided four-page commerce templates labeled with the selected project names; they do not yet render the imported applications themselves. Security architecture findings still use the bundled ShopSpring fixture, and only the pricing boundary test executes real fixture code. No background AI job continues after indexing finishes. The change assistant demonstrates the complete consent flow and records sandbox approval locally, but it does not edit connected source files. AI-powered repository analysis, project-specific rendering and security testing, durable project storage, private GitHub access, patch generation, and approval-based publishing are the next backend milestones.
 
 ## What comes After
 

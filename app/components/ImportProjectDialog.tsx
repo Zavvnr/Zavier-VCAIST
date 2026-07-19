@@ -57,9 +57,15 @@ const sourceOptions: Array<{
 export function ImportProjectDialog({
   onClose,
   onImport,
+  eyebrow = "PROJECT SOURCE",
+  title = "Where is your project?",
+  description = "Choose one source. VCAIST only reads files needed for this scan.",
 }: {
   onClose: () => void;
   onImport: (project: ImportedProject) => void;
+  eyebrow?: string;
+  title?: string;
+  description?: string;
 }) {
   const [source, setSource] = useState<ImportSource>("local");
   const [githubUrl, setGithubUrl] = useState("");
@@ -199,9 +205,9 @@ export function ImportProjectDialog({
       <section className="import-dialog" role="dialog" aria-modal="true" aria-labelledby="import-title">
         <div className="import-heading">
           <div>
-            <span className="section-kicker">PROJECT SOURCE</span>
-            <h2 id="import-title">Where is your project?</h2>
-            <p>Choose one source. VCAIST only reads files needed for this scan.</p>
+            <span className="section-kicker">{eyebrow}</span>
+            <h2 id="import-title">{title}</h2>
+            <p>{description}</p>
           </div>
           <button className="dialog-close" onClick={onClose} disabled={busy} aria-label="Close import dialog">×</button>
         </div>

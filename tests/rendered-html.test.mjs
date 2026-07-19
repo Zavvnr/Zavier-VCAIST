@@ -179,7 +179,7 @@ test("explains every workspace view immediately below its tab", async () => {
   const source = await readFile(new URL("../app/Dashboard.tsx", import.meta.url), "utf8");
   assert.match(source, /Understand the platform before exploring the app/);
   assert.match(source, /See every page before deciding what to change/);
-  assert.match(source, /See which business rules move the numbers/);
+  assert.match(source, /Compare your current app with another app/);
   assert.match(source, /Follow the workflow, source code, and data relationships/);
   assert.match(source, /Review safety from customer input to system architecture/);
   assert.match(source, /<WorkspaceViewIntroduction view=\{view\} \/>/);
@@ -206,6 +206,27 @@ test("keeps Current Application focused on its consent-first page carousel", asy
   assert.match(source, /Allow change planning/);
   assert.match(source, /Approve sandbox draft/);
   assert.match(source, /This prototype does not edit connected source files yet/);
+});
+
+test("replaces Controls with a two-application carousel comparison", async () => {
+  const source = await readFile(new URL("../app/Dashboard.tsx", import.meta.url), "utf8");
+  const importer = await readFile(new URL("../app/components/ImportProjectDialog.tsx", import.meta.url), "utf8");
+  const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  assert.match(source, /type WorkspaceView = "overview" \| "application" \| "compare" \| "map" \| "tests"/);
+  assert.match(source, /id: "compare", label: "Compare"/);
+  assert.doesNotMatch(source, /id: "controls", label: "Controls"/);
+  assert.match(source, /<CompareApplications[\s\S]*currentProject=\{project\}[\s\S]*comparisonProject=\{comparisonProject\}/);
+  assert.match(source, /<ComparisonAppCarousel project=\{currentProject\}[\s\S]*<ComparisonAppCarousel project=\{comparisonProject\}/);
+  assert.match(source, /function ApplicationInterfaceCarousel[\s\S]*aria-roledescription="carousel"/);
+  assert.match(source, /Which app would you like to compare\?/);
+  assert.match(source, /setComparisonProject\(nextProject\)/);
+  assert.match(source, /Local folder[\s\S]*Google Drive[\s\S]*GitHub/);
+  assert.doesNotMatch(source, /function Controls\(|function FullKnob\(/);
+  const compareComponent = source.match(/function CompareApplications[\s\S]*?(?=function ComparisonAppCarousel)/)?.[0] ?? "";
+  assert.doesNotMatch(compareComponent, /AiChangeAssistant|range-input|monthly revenue|Estimated margin/);
+  assert.match(importer, /eyebrow = "PROJECT SOURCE"[\s\S]*title = "Where is your project\?"[\s\S]*description =/);
+  assert.match(css, /\.compare-carousel-grid \{[\s\S]*?grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/);
+  assert.match(css, /@media \(max-width: 1180px\) \{[\s\S]*?\.compare-carousel-grid \{ grid-template-columns: 1fr; \}/);
 });
 
 test("opens App Map steps in a read-only source workspace", async () => {
