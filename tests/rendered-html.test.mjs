@@ -212,28 +212,38 @@ test("opens App Map steps in a read-only source workspace", async () => {
   const source = await readFile(new URL("../app/Dashboard.tsx", import.meta.url), "utf8");
   const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
   assert.match(source, /Inspect workflow source, read the entity relationship diagram/);
-  assert.match(source, /className=\{selectedStep === index \? "flow-step selected" : "flow-step"\}/);
+  assert.match(source, /className=\{`flow-step\$\{selectedStep === index \? " selected" : ""\}\$\{hasRuntimeError \? " error" : ""\}`\}/);
   assert.match(source, /onClick=\{\(\) => setSelectedStep\(index\)\}/);
-  assert.match(source, /<SourceCodeWorkspace selectedStep=\{selectedStep\} onSelect=\{setSelectedStep\} \/>/);
+  assert.match(source, /<SourceCodeWorkspace selectedStep=\{selectedStep\} onSelect=\{setSelectedStep\} runtimeErrorCount=\{runtimeErrorCount\} \/>/);
   assert.match(source, /CartPage\.tsx[\s\S]*pricing\.ts[\s\S]*route\.ts[\s\S]*stripe\.ts/);
   assert.match(source, /This workspace can inspect files, but it cannot edit or save them/);
   assert.match(css, /\.source-workspace \{[\s\S]*?background: var\(--surface-soft\);/);
   assert.match(css, /\.source-code-line\.highlighted \{[\s\S]*?var\(--blue-soft\)/);
 });
 
-test("documents entities and directs visible program errors to Safety Tests", async () => {
+test("shows a simple ERD and directs red-highlighted program errors to Safety Tests", async () => {
   const source = await readFile(new URL("../app/Dashboard.tsx", import.meta.url), "utf8");
   const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
   assert.match(source, /What is an entity relationship diagram\?/);
-  assert.match(source, /cardinality[\s\S]*0\.\.\*[\s\S]*1\.\.\*/);
-  assert.match(source, /Customer[\s\S]*Order Item[\s\S]*Payment Attempt[\s\S]*Pricing Rule[\s\S]*Applied Pricing Rule/);
-  assert.match(source, /RELATIONSHIP MAP[\s\S]*ENTITY DICTIONARY[\s\S]*Referential integrity[\s\S]*Historical integrity[\s\S]*Safety constraints/);
+  assert.match(source, /Rectangles are entities[\s\S]*diamonds are relationships[\s\S]*ovals are important attributes/);
+  assert.match(source, /<ChenEntity name="Customer"[\s\S]*<ChenEntity name="Order"[\s\S]*<ChenEntity name="Order Item"[\s\S]*<ChenEntity name="Product"/);
+  assert.match(source, /<ChenRelationship fromCount="1" name="places" toCount="M"[\s\S]*name="contains"[\s\S]*name="references"/);
+  assert.doesNotMatch(source, /ENTITY DICTIONARY/);
+  assert.doesNotMatch(source, /appEntities\.map/);
   assert.match(source, /PROGRAM ERROR DETECTED/);
   assert.match(source, /className="map-diagnostic-alert error" role="alert"/);
   assert.match(source, /Runtime <strong>[\s\S]*Compile-time <strong>/);
   assert.match(source, /onClick=\{onOpenSafetyTests\}>Open Safety Tests/);
+  assert.match(source, /step\.filePath === "lib\/pricing\.ts"/);
+  assert.match(source, /flow-step\$\{selectedStep === index[\s\S]*hasRuntimeError \? " error"/);
+  assert.match(source, /<\/figure>\s*\{hasErrors \? \(/);
   assert.match(source, /setView\("tests"\)/);
   assert.match(css, /\.map-diagnostic-alert\.error \{[\s\S]*?border: 2px solid var\(--coral\);/);
+  assert.match(css, /\.flow-step\.error,[\s\S]*?border: 2px solid var\(--coral\);/);
+  assert.match(css, /\.source-file-list button\.has-error[\s\S]*?var\(--coral-soft\)/);
+  assert.match(css, /\.chen-entity-node \{[\s\S]*?background: var\(--blue\);/);
+  assert.match(css, /\.chen-relationship-node > span \{[\s\S]*?transform: rotate\(45deg\);/);
+  assert.match(css, /\.chen-attributes > span \{[\s\S]*?border-radius: 50%;/);
   assert.match(css, /\.erd-section \{[\s\S]*?grid-column: 1 \/ -1;/);
 });
 

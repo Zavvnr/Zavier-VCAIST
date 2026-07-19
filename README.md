@@ -6,7 +6,7 @@ The current prototype demonstrates the complete product loop with a sample comme
 
 ## What it does
 
-- Explains an app's workflow as both a plain-English and technical map, then documents its conceptual data model in a detailed entity relationship diagram.
+- Explains an app's workflow as both a plain-English and technical map, then summarizes its core data model in a simple entity relationship diagram.
 - Finds adjustable business values such as prices, discounts, thresholds, and fees.
 - Lets users choose a local project folder, a Google Drive folder, or a public GitHub repository as the project source.
 - Connects those values to responsive controls that re-run the sample app logic immediately.
@@ -75,7 +75,7 @@ The interface uses a desktop sidebar, fluid content grids, touch-friendly contro
 - **Device-local scan cache** — fingerprints supported file metadata so an unchanged project can skip repeat indexing on the same browser for 30 days. Source contents are never stored in the cache, and browsers still require the user to select a local folder again for privacy.
 - **Business controls** — four sliders bound to the sample app's price, discount, discount threshold, and shipping fee.
 - **Live sandbox** — re-runs the connected pricing function without touching live customers or production data.
-- **App map** — toggles between a plain-English purchase flow and the corresponding technical path. Every workflow step opens its mapped file in a line-numbered, read-only source workspace. A detailed conceptual entity relationship diagram explains entities, attributes, primary and foreign keys, cardinalities, ownership, historical snapshots, payment attempts, pricing-rule joins, and integrity constraints. Runtime or compile-time failures appear in a high-contrast red diagnostic alert with a direct link to Safety Tests.
+- **App map** — toggles between a plain-English purchase flow and the corresponding technical path. Every workflow step opens its mapped file in a line-numbered, read-only source workspace. A simplified conceptual entity relationship diagram uses rectangles for the four core entities, diamonds for relationships, ovals for important attributes, and one/many cardinality labels. A failing workflow module and its source file are highlighted in red, followed by a warning beneath the diagram with a direct link to Safety Tests. The longer entity dictionary has been removed.
 - **Safety tests** — presents a searchable, clickable system-wide findings list instead of only customer-facing edge cases. It combines the executed zero-quantity pricing check with guided code and architecture review for input-length limits, rate limiting, client/server trust boundaries, payment idempotency, object authorization, error disclosure, and webhook verification. Every finding opens full evidence, failure or attack scenarios, affected systems, and recommended protections.
 - **Help center** — quick-start instructions and plain-language answers to common trust and safety questions.
 - **Settings** — a tiered model-and-price comparison, scan behavior, test coverage, explanation preferences, and four persistent color themes saved locally on the device. Midnight Clay is the black-background default, with Midnight Sky, Forest Mint, and Warm Light alternatives. Shared semantic surfaces and WCAG-informed contrast tokens keep labels, status colors, boundaries, and controls legible in every theme. Model prices are presented per one million input/output tokens and include a visible date and provider-pricing caveat.

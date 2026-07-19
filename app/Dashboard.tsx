@@ -639,7 +639,7 @@ const programFeatures = [
   ["Compare AI models", "Choose among Frontier, Workhorse, and Efficient models from OpenAI, Anthropic, Google, Moonshot AI, and Alibaba Cloud."],
   ["Find business controls", "Surface prices, fees, discounts, thresholds, and other values that affect how the app behaves."],
   ["Experiment safely", "Move responsive sliders and re-run the sample app logic in a private sandbox without touching live customers."],
-  ["Follow the app map", "Switch between a plain-English customer journey and technical source, then inspect a detailed entity relationship diagram with keys, cardinalities, integrity rules, and error handoff."],
+  ["Follow the app map", "Switch between a plain-English customer journey and technical source, then read a simple entity relationship diagram and open red-highlighted errors in Safety Tests."],
   ["Review system-wide safety", "Combine real boundary runs with guided review of input limits, abuse controls, authorization, payments, resilience, and information exposure."],
   ["Keep human approval", "Review explanations and proposed remedies first. This prototype never publishes a code change automatically."],
   ["Adjust the experience", "Use the Help center, persistent settings, four accessible color themes, and responsive phone or desktop layouts."],
@@ -993,28 +993,33 @@ function AppMap({
           </div>
         </div>
         <div className="flow-map">
-          {appMapSteps.map((step, index) => (
-            <div className="flow-step-wrap" key={step.filePath}>
-              <button
-                type="button"
-                className={selectedStep === index ? "flow-step selected" : "flow-step"}
-                onClick={() => setSelectedStep(index)}
-                aria-expanded={selectedStep === index}
-                aria-controls="app-map-source-workspace"
-              >
-                <span className="flow-icon">{step.icon}</span>
-                <strong>{mode === "plain" ? step.plainTitle : step.technicalTitle}</strong>
-                <small>{mode === "plain" ? step.plainDetail : step.technicalDetail}</small>
-                <span className="flow-source-action">View source <b aria-hidden="true">↓</b></span>
-              </button>
-              {index < appMapSteps.length - 1 ? <span className="flow-arrow" aria-hidden="true">→</span> : null}
-            </div>
-          ))}
+          {appMapSteps.map((step, index) => {
+            const hasRuntimeError = runtimeErrorCount > 0 && step.filePath === "lib/pricing.ts";
+            return (
+              <div className="flow-step-wrap" key={step.filePath}>
+                <button
+                  type="button"
+                  className={`flow-step${selectedStep === index ? " selected" : ""}${hasRuntimeError ? " error" : ""}`}
+                  onClick={() => setSelectedStep(index)}
+                  aria-expanded={selectedStep === index}
+                  aria-controls="app-map-source-workspace"
+                  aria-label={`${mode === "plain" ? step.plainTitle : step.technicalTitle}${hasRuntimeError ? ", runtime error detected" : ""}`}
+                >
+                  <span className="flow-icon">{step.icon}</span>
+                  <strong>{mode === "plain" ? step.plainTitle : step.technicalTitle}</strong>
+                  <small>{mode === "plain" ? step.plainDetail : step.technicalDetail}</small>
+                  {hasRuntimeError ? <span className="flow-error-status">Runtime error · {step.fileName}</span> : null}
+                  <span className="flow-source-action">View source <b aria-hidden="true">↓</b></span>
+                </button>
+                {index < appMapSteps.length - 1 ? <span className="flow-arrow" aria-hidden="true">→</span> : null}
+              </div>
+            );
+          })}
         </div>
 
         {selectedStep === null ? (
           <div className="source-workspace-prompt" id="app-map-source-workspace" role="note"><span aria-hidden="true">{`{ }`}</span><p><strong>Select any step to inspect its source</strong>The file will open here in a read-only workspace.</p></div>
-        ) : <SourceCodeWorkspace selectedStep={selectedStep} onSelect={setSelectedStep} />}
+        ) : <SourceCodeWorkspace selectedStep={selectedStep} onSelect={setSelectedStep} runtimeErrorCount={runtimeErrorCount} />}
       </section>
       <aside className="panel map-insight">
         <div className="insight-icon" aria-hidden="true">◎</div><span className="section-kicker">VCAIST NOTICED</span>
@@ -1044,13 +1049,51 @@ function EntityRelationshipSection({
 
   return (
     <section className="panel erd-section" aria-labelledby="erd-title">
+      <div className="erd-heading">
+        <div>
+          <span className="section-kicker">ENTITY RELATIONSHIP DIAGRAM</span>
+          <h2 id="erd-title">The four records behind a ShopSpring order</h2>
+        </div>
+        <span className="erd-model-badge">Simple conceptual model</span>
+      </div>
+
+      <div className="simple-erd-explanation">
+        <h3>What is an entity relationship diagram?</h3>
+        <p>An ERD is a picture of the information an application stores and how those records connect. <strong>Rectangles are entities</strong>, <strong>diamonds are relationships</strong>, and <strong>ovals are important attributes</strong>. The labels <code>1</code> and <code>M</code> mean “one” and “many.” Underlined attributes are primary keys; attributes marked <code>FK</code> point to another entity.</p>
+      </div>
+
+      <div className="erd-scope-note" role="note"><span aria-hidden="true">i</span><p><strong>How to interpret this prototype</strong>This is VCAIST’s conceptual model of the bundled ShopSpring example. It explains the records the workflow should rely on; it is not a live introspection of an imported database and does not apply schema changes.</p></div>
+
+      <div className="chen-erd-legend" aria-label="Entity relationship diagram legend">
+        <span><i className="entity" aria-hidden="true" /> Entity</span>
+        <span><i className="relationship" aria-hidden="true" /> Relationship</span>
+        <span><i className="attribute" aria-hidden="true" /> Attribute</span>
+        <span><b>1</b> One</span>
+        <span><b>M</b> Many</span>
+      </div>
+
+      <figure className="chen-erd-diagram" aria-labelledby="erd-relationships-title">
+        <figcaption id="erd-relationships-title">Read from left to right: one customer can place many orders; one order contains many line items; many line items can reference one product.</figcaption>
+        <div className="chen-erd-scroll" tabIndex={0} aria-label="Scrollable entity relationship diagram">
+          <div className="chen-erd-track">
+            <ChenEntity name="Customer" attributes={["customer_id · PK", "email", "name"]} />
+            <ChenRelationship fromCount="1" name="places" toCount="M" />
+            <ChenEntity name="Order" attributes={["order_id · PK", "customer_id · FK", "total", "status"]} />
+            <ChenRelationship fromCount="1" name="contains" toCount="M" />
+            <ChenEntity name="Order Item" attributes={["item_id · PK", "order_id · FK", "product_id · FK", "quantity", "unit_price"]} />
+            <ChenRelationship fromCount="M" name="references" toCount="1" />
+            <ChenEntity name="Product" attributes={["product_id · PK", "sku", "name", "current_price"]} />
+          </div>
+        </div>
+      </figure>
+
       {hasErrors ? (
         <div className="map-diagnostic-alert error" role="alert">
           <span className="map-diagnostic-icon" aria-hidden="true">!</span>
           <div className="map-diagnostic-copy">
             <span className="section-kicker">PROGRAM ERROR DETECTED</span>
-            <h3>Fix execution problems before trusting every path in this data model</h3>
-            <p>The current sample has a failing quantity-zero execution path. The diagram remains useful, but an error can prevent a workflow from creating or updating these records correctly.</p>
+            <h3>The pricing module has a failing runtime path</h3>
+            <p><strong>lib/pricing.ts</strong> returns a negative total when quantity is zero. The affected workflow module and source file are highlighted in red above.</p>
             <div className="map-diagnostic-status" aria-label="Program diagnostic status">
               <span className={runtimeErrorCount > 0 ? "error" : "healthy"}>Runtime <strong>{runtimeErrorCount > 0 ? `${runtimeErrorCount} error${runtimeErrorCount === 1 ? "" : "s"}` : "No errors"}</strong></span>
               <span className={compileErrorCount > 0 ? "error" : "healthy"}>Compile-time <strong>{compileErrorCount > 0 ? `${compileErrorCount} error${compileErrorCount === 1 ? "" : "s"}` : "No errors"}</strong></span>
@@ -1059,98 +1102,42 @@ function EntityRelationshipSection({
           <button type="button" className="map-safety-button" onClick={onOpenSafetyTests}>Open Safety Tests <span aria-hidden="true">→</span></button>
         </div>
       ) : null}
-
-      <div className="erd-heading">
-        <div>
-          <span className="section-kicker">ENTITY RELATIONSHIP DIAGRAM</span>
-          <h2 id="erd-title">How ShopSpring stores and connects its business data</h2>
-        </div>
-        <span className="erd-model-badge">Conceptual data model</span>
-      </div>
-
-      <div className="erd-definition">
-        <div>
-          <h3>What is an entity relationship diagram?</h3>
-          <p>An entity relationship diagram, usually shortened to <strong>ERD</strong>, is a visual blueprint of the durable information an application needs and the rules connecting that information. An <strong>entity</strong> is a business object—such as a customer, order, product, or payment attempt—and often becomes a database table. Its <strong>attributes</strong> are the fields stored for each record.</p>
-          <p>Relationship lines explain how records refer to one another. Their <strong>cardinality</strong> states the allowed quantity on each side: <code>1</code> means exactly one, <code>0..*</code> means zero or many, and <code>1..*</code> means one or many. Primary and foreign keys make those relationships enforceable instead of merely descriptive.</p>
-        </div>
-        <div className="erd-why-it-matters">
-          <h3>Why this matters</h3>
-          <ul>
-            <li>Shows where customer ownership and authorization must be checked.</li>
-            <li>Reveals duplicate-payment, orphan-record, and accidental-deletion risks.</li>
-            <li>Separates current catalog values from historical order snapshots.</li>
-            <li>Makes data migrations, API contracts, tests, and audit trails easier to reason about.</li>
-          </ul>
-        </div>
-      </div>
-
-      <div className="erd-scope-note" role="note"><span aria-hidden="true">i</span><p><strong>How to interpret this prototype</strong>This is VCAIST’s conceptual model of the bundled ShopSpring example. It explains the records the workflow should rely on; it is not a live introspection of an imported database and does not apply schema changes.</p></div>
-
-      <div className="erd-legend" aria-label="Entity relationship diagram legend">
-        <strong>Legend</strong>
-        <span><b>PK</b> Primary key</span>
-        <span><b>FK</b> Foreign key</span>
-        <span><b>UQ</b> Unique value</span>
-        <span><code>1</code> Exactly one</span>
-        <span><code>0..*</code> Zero or many</span>
-        <span><code>1..*</code> One or many</span>
-      </div>
-
-      <figure className="erd-diagram" aria-labelledby="erd-relationships-title">
-        <figcaption><span className="section-kicker">RELATIONSHIP MAP</span><h3 id="erd-relationships-title">Read each relationship from left to right</h3></figcaption>
-        <div className="erd-relationship-list">
-          {appEntityRelationships.map((relationship) => (
-            <div className="erd-relationship-row" key={`${relationship.from}-${relationship.to}`}>
-              <div className="erd-relationship-path">
-                <div className="erd-entity-reference"><span>ENTITY</span><strong>{relationship.from}</strong></div>
-                <div className="erd-connector" aria-label={`${relationship.fromCount} ${relationship.verb} ${relationship.toCount}`}>
-                  <b>{relationship.fromCount}</b><i aria-hidden="true" /><em>{relationship.verb}</em><i aria-hidden="true" /><b>{relationship.toCount}</b>
-                </div>
-                <div className="erd-entity-reference"><span>ENTITY</span><strong>{relationship.to}</strong></div>
-              </div>
-              <p>{relationship.detail}</p>
-            </div>
-          ))}
-        </div>
-      </figure>
-
-      <div className="erd-dictionary-heading"><div><span className="section-kicker">ENTITY DICTIONARY</span><h3>Fields, keys, and responsibilities</h3></div><p>These details turn the relationship map into a practical reference for APIs, validation, ownership checks, and database constraints.</p></div>
-      <div className="erd-entity-grid">
-        {appEntities.map((entity) => (
-          <article className="erd-entity-card" key={entity.name}>
-            <header><div><span>ENTITY</span><h4>{entity.name}</h4></div><code>{entity.tableName}</code></header>
-            <p>{entity.purpose}</p>
-            <ul aria-label={`${entity.name} fields`}>
-              {entity.fields.map((field) => (
-                <li key={field.name}>
-                  <div>{field.key ? <b className={`erd-key ${field.key.toLowerCase()}`}>{field.key}</b> : <b className="erd-key empty" aria-hidden="true">—</b>}<code>{field.name}</code><span>{field.type}</span></div>
-                  <small>{field.detail}</small>
-                </li>
-              ))}
-            </ul>
-          </article>
-        ))}
-      </div>
-
-      <div className="erd-integrity-grid">
-        <article><span aria-hidden="true">⌁</span><div><h3>Referential integrity</h3><p>Foreign keys should reject missing parents. Deleting customers, products, or orders needs an explicit restrict, archive, or cascade policy so important history cannot disappear accidentally.</p></div></article>
-        <article><span aria-hidden="true">◇</span><div><h3>Historical integrity</h3><p>Store unit prices, discounts, fees, rule versions, and payment amounts as immutable order snapshots. A later catalog or pricing-rule edit must never rewrite a completed purchase.</p></div></article>
-        <article><span aria-hidden="true">⊘</span><div><h3>Safety constraints</h3><p>Require positive quantities, non-negative totals, unique provider and idempotency identifiers, valid status transitions, tenant-scoped reads, and atomic order/payment updates.</p></div></article>
-      </div>
     </section>
   );
 }
 
-function SourceCodeWorkspace({ selectedStep, onSelect }: { selectedStep: number; onSelect: (index: number) => void }) {
+function ChenEntity({ name, attributes }: { name: string; attributes: readonly string[] }) {
+  return (
+    <div className="chen-entity-group">
+      <div className="chen-attributes" aria-label={`${name} attributes`}>
+        {attributes.map((attribute) => {
+          const isPrimaryKey = attribute.includes("· PK");
+          return <span className={isPrimaryKey ? "primary" : ""} key={attribute}>{attribute}</span>;
+        })}
+      </div>
+      <div className="chen-entity-node">{name}</div>
+    </div>
+  );
+}
+
+function ChenRelationship({ fromCount, name, toCount }: { fromCount: "1" | "M"; name: string; toCount: "1" | "M" }) {
+  return (
+    <div className="chen-relationship-node" aria-label={`${fromCount} ${name} ${toCount}`}>
+      <b>{fromCount}</b><i aria-hidden="true" /><span><em>{name}</em></span><i aria-hidden="true" /><b>{toCount}</b>
+    </div>
+  );
+}
+
+function SourceCodeWorkspace({ selectedStep, onSelect, runtimeErrorCount }: { selectedStep: number; onSelect: (index: number) => void; runtimeErrorCount: number }) {
   const selectedSource = appMapSteps[selectedStep];
   const codeLines = selectedSource.code.split("\n");
+  const selectedSourceHasError = runtimeErrorCount > 0 && selectedSource.filePath === "lib/pricing.ts";
 
   return (
-    <section className="source-workspace" id="app-map-source-workspace" aria-labelledby="source-workspace-title" aria-live="polite">
+    <section className={`source-workspace${selectedSourceHasError ? " error-file" : ""}`} id="app-map-source-workspace" aria-labelledby="source-workspace-title" aria-live="polite">
       <header className="source-workspace-header">
         <div><span className="section-kicker">SOURCE WORKSPACE</span><h3 id="source-workspace-title">Code behind step {selectedStep + 1}</h3></div>
-        <span className="read-only-badge"><i aria-hidden="true">◇</i> Read only</span>
+        <span className={`read-only-badge${selectedSourceHasError ? " error" : ""}`}><i aria-hidden="true">{selectedSourceHasError ? "!" : "◇"}</i> {selectedSourceHasError ? "Runtime error" : "Read only"}</span>
       </header>
 
       <div className="source-workspace-summary">
@@ -1165,23 +1152,23 @@ function SourceCodeWorkspace({ selectedStep, onSelect }: { selectedStep: number;
             <button
               type="button"
               key={step.filePath}
-              className={selectedStep === index ? "active" : ""}
+              className={`${selectedStep === index ? "active" : ""}${runtimeErrorCount > 0 && step.filePath === "lib/pricing.ts" ? " has-error" : ""}`.trim()}
               onClick={() => onSelect(index)}
               aria-current={selectedStep === index ? "page" : undefined}
             >
-              <i aria-hidden="true">TS</i><span><strong>{step.fileName}</strong><small>Step {index + 1}</small></span>
+              <i aria-hidden="true">{runtimeErrorCount > 0 && step.filePath === "lib/pricing.ts" ? "!" : "TS"}</i><span><strong>{step.fileName}</strong><small>{runtimeErrorCount > 0 && step.filePath === "lib/pricing.ts" ? "Runtime error" : `Step ${index + 1}`}</small></span>
             </button>
           ))}
         </nav>
 
         <div className="source-editor" aria-label={`Read-only source code for ${selectedSource.fileName}`}>
-          <div className="source-editor-tab"><span aria-hidden="true">TS</span><strong>{selectedSource.fileName}</strong><small>Read only</small></div>
+          <div className={`source-editor-tab${selectedSourceHasError ? " error" : ""}`}><span aria-hidden="true">{selectedSourceHasError ? "!" : "TS"}</span><strong>{selectedSource.fileName}</strong><small>{selectedSourceHasError ? "Runtime error" : "Read only"}</small></div>
           <div className="source-editor-breadcrumb">ShopSpring <b aria-hidden="true">›</b> {selectedSource.filePath}</div>
           <div className="source-code" role="region" aria-label="Source code" tabIndex={0}>
             {codeLines.map((line, index) => {
               const lineNumber = index + 1;
               const highlighted = (selectedSource.highlightLines as readonly number[]).includes(lineNumber);
-              return <div className={highlighted ? "source-code-line highlighted" : "source-code-line"} key={`${selectedSource.fileName}-${lineNumber}`}><span aria-hidden="true">{lineNumber}</span><code>{line || " "}</code></div>;
+              return <div className={highlighted ? `source-code-line highlighted${selectedSourceHasError ? " error-highlight" : ""}` : "source-code-line"} key={`${selectedSource.fileName}-${lineNumber}`}><span aria-hidden="true">{lineNumber}</span><code>{line || " "}</code></div>;
             })}
           </div>
         </div>
