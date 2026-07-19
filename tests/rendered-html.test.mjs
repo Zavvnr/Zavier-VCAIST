@@ -183,6 +183,8 @@ test("explains every workspace view immediately below its tab", async () => {
   assert.match(source, /Follow one customer action through the app/);
   assert.match(source, /Understand edge cases before customers find them/);
   assert.match(source, /<WorkspaceViewIntroduction view=\{view\} \/>/);
+  assert.match(source, /<WorkspaceViewIntroduction view=\{view\} \/> : null\}\s*\{projectReady && view === "overview" \? <ProgramOverview \/> : null\}\s*\{projectConnected \?/);
+  assert.equal(source.match(/<ProgramOverview \/>/g)?.length, 1);
 });
 
 test("preserves the original README roadmap and core-loop brief", async () => {

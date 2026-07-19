@@ -69,7 +69,7 @@ The interface uses a desktop sidebar, fluid content grids, touch-friendly contro
 
 - **Guided welcome page** — explains what VCAIST is for, walks through its four-step safety loop, and offers both a demo and a direct path into the user's own project.
 - **Direct workspace** — skips the tutorial and demo, opens the project-source chooser immediately, and accepts a local folder, Google Drive folder, or public GitHub repository.
-- **Workspace views** — Overview, Controls, App map, and Safety tests each begin with a plain-language explanation of the page and three useful actions. The Overview also includes business metrics, connection state, a persistent cross-provider model selector, re-scan action, live order simulation, complete feature index, and an end-to-end example story.
+- **Workspace views** — Overview, Controls, App map, and Safety tests each begin with a plain-language explanation of the page and three useful actions. The Overview places its program summary, complete feature index, and end-to-end example story immediately after that explanation, before business metrics, connection state, and the live order simulation.
 - **Project importer** — one source chooser for local directories, Google Drive folders, and public GitHub repositories, with an explicit indexing state and clear completion message.
 - **Device-local scan cache** — fingerprints supported file metadata so an unchanged project can skip repeat indexing on the same browser for 30 days. Source contents are never stored in the cache, and browsers still require the user to select a local folder again for privacy.
 - **Business controls** — four sliders bound to the sample app's price, discount, discount threshold, and shipping fee.

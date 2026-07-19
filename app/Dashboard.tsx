@@ -249,6 +249,7 @@ export function Dashboard({ startWithImporter = false }: { startWithImporter?: b
 
       <div className="workspace-content">
         {projectReady ? <WorkspaceViewIntroduction view={view} /> : null}
+        {projectReady && view === "overview" ? <ProgramOverview /> : null}
 
         {projectConnected ? <div className={scanning ? "scan-status loading" : "scan-status"} role="status" aria-live="polite">
           <span className={scanning ? "status-orb scanning" : "status-orb"} aria-hidden="true">
@@ -479,7 +480,6 @@ function Overview({
         </div>
       </section>
 
-      <ProgramOverview />
     </div>
   );
 }

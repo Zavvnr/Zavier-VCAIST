@@ -1370,6 +1370,7 @@ strong {
 .compact-knob.amber .range-input::-moz-range-thumb { border-color: var(--amber); }
 
 .program-overview {
+  margin-bottom: 16px;
   padding: clamp(24px, 3vw, 34px);
 }
 
