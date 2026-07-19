@@ -29,7 +29,7 @@ const tutorialSteps = [
     id: 3,
     eyebrow: "STAY SAFE",
     title: "Review surprises before acting",
-    description: "VCAIST stress-tests awkward cases, explains any failure, and waits for your approval before a future code change can be prepared.",
+    description: "VCAIST combines awkward-input runs with code and system-design safety review, explains each risk, and waits for your approval before a future change can be prepared.",
     time: "You make the final decision",
   },
 ];
@@ -169,7 +169,7 @@ export function Onboarding() {
           <div className="purpose-grid">
             <article><span className="purpose-icon green" aria-hidden="true">◎</span><h3>See how it works</h3><p>Follow a visual map from what a customer does to the code and services that respond.</p><small>Plain-English and technical views</small></article>
             <article><span className="purpose-icon blue" aria-hidden="true">↔</span><h3>Explore business controls</h3><p>Adjust prices, thresholds, and fees in a sandbox, then see the real output change.</p><small>Your live app stays untouched</small></article>
-            <article><span className="purpose-icon coral" aria-hidden="true">!</span><h3>Find surprises early</h3><p>Run awkward inputs on purpose and turn failures into a clear explanation of business impact.</p><small>Real tests, understandable results</small></article>
+            <article><span className="purpose-icon coral" aria-hidden="true">!</span><h3>Find surprises early</h3><p>Review business errors, input limits, abuse controls, authorization, payments, and resilience in one understandable risk list.</p><small>Behavior and system-design safety</small></article>
           </div>
         </section>
 

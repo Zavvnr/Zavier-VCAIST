@@ -181,7 +181,7 @@ test("explains every workspace view immediately below its tab", async () => {
   assert.match(source, /See every page before deciding what to change/);
   assert.match(source, /See which business rules move the numbers/);
   assert.match(source, /Follow one customer action through the app/);
-  assert.match(source, /Understand edge cases before customers find them/);
+  assert.match(source, /Review safety from customer input to system architecture/);
   assert.match(source, /<WorkspaceViewIntroduction view=\{view\} \/>/);
   assert.match(source, /<WorkspaceViewIntroduction view=\{view\} \/> : null\}\s*\{projectReady && view === "overview" \? <ProgramOverview \/> : null\}\s*\{projectConnected \?/);
   assert.equal(source.match(/<ProgramOverview \/>/g)?.length, 1);
@@ -219,6 +219,25 @@ test("opens App Map steps in a read-only source workspace", async () => {
   assert.match(source, /This workspace can inspect files, but it cannot edit or save them/);
   assert.match(css, /\.source-workspace \{[\s\S]*?background: var\(--surface-soft\);/);
   assert.match(css, /\.source-code-line\.highlighted \{[\s\S]*?var\(--blue-soft\)/);
+});
+
+test("presents system-wide safety and security findings as an interactive list", async () => {
+  const source = await readFile(new URL("../app/Dashboard.tsx", import.meta.url), "utf8");
+  const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  assert.match(source, /SYSTEM-WIDE SAFETY REVIEW/);
+  assert.match(source, /Oversized text has no enforced limit/);
+  assert.match(source, /Checkout has no rate limit or usage quota/);
+  assert.match(source, /Payment amount can cross the client trust boundary/);
+  assert.match(source, /Payment retries are not idempotent/);
+  assert.match(source, /Order lookup does not prove ownership/);
+  assert.match(source, /Internal error details can reach clients/);
+  assert.match(source, /Payment webhook verifies its signature/);
+  assert.match(source, /placeholder="Search risks or systems"/);
+  assert.match(source, /onClick=\{\(\) => setSelectedFindingId\(finding\.id\)\}/);
+  assert.match(source, /HOW VCAIST CHECKED[\s\S]*EVIDENCE[\s\S]*FAILURE OR ATTACK SCENARIO[\s\S]*BUSINESS AND SYSTEM IMPACT/);
+  assert.match(source, /Security findings are guided code-review examples/);
+  assert.match(css, /\.safety-finding-list button\.selected \{[\s\S]*?var\(--coral-soft\)/);
+  assert.match(css, /\.safety-detail-panel \{[\s\S]*?position: sticky;/);
 });
 
 test("preserves the original README roadmap and core-loop brief", async () => {

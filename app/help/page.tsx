@@ -18,7 +18,7 @@ const questions = [
   },
   {
     question: "Are the safety tests real?",
-    answer: "Yes. VCAIST runs the connected function with awkward inputs and reports the actual result in plain English.",
+    answer: "The bundled pricing boundary check runs real fixture code and reports the actual output. Security and architecture findings are clearly labeled guided review examples until project-specific analysis is connected.",
   },
   {
     question: "Does uploading code make it public?",

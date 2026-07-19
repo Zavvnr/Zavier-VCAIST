@@ -52,9 +52,9 @@ const workspaceViewGuides: Record<WorkspaceView, {
   },
   tests: {
     eyebrow: "SAFETY TESTS · CATCH SURPRISES",
-    title: "Understand edge cases before customers find them",
-    description: "This page runs awkward inputs against the real pricing function, shows the actual outputs, and explains failed cases in business language before presenting a possible remedy for review.",
-    actions: ["Review real outputs", "See why a test failed", "Consider a safe remedy"],
+    title: "Review safety from customer input to system architecture",
+    description: "This page combines executed behavior checks with guided code and system-design review. Search business errors, input limits, rate limiting, authorization, payment integrity, resilience, and information-exposure risks, then select any finding for full evidence and protection guidance.",
+    actions: ["Search the complete risk list", "Open full finding details", "Review safer system controls"],
   },
 };
 
@@ -627,7 +627,7 @@ const programFeatures = [
   ["Find business controls", "Surface prices, fees, discounts, thresholds, and other values that affect how the app behaves."],
   ["Experiment safely", "Move responsive sliders and re-run the sample app logic in a private sandbox without touching live customers."],
   ["Follow the app map", "Switch between a plain-English customer journey and the corresponding technical files and functions."],
-  ["Stress-test edge cases", "Try zero, boundary, and unusually large inputs, then translate failures into understandable business impact."],
+  ["Review system-wide safety", "Combine real boundary runs with guided review of input limits, abuse controls, authorization, payments, resilience, and information exposure."],
   ["Keep human approval", "Review explanations and proposed remedies first. This prototype never publishes a code change automatically."],
   ["Adjust the experience", "Use the Help center, persistent settings, four accessible color themes, and responsive phone or desktop layouts."],
 ] as const;
@@ -935,32 +935,275 @@ function SourceCodeWorkspace({ selectedStep, onSelect }: { selectedStep: number;
   );
 }
 
+type SafetyFinding = {
+  id: string;
+  status: "risk" | "passed";
+  severity: "critical" | "high" | "medium" | "verified";
+  category: string;
+  title: string;
+  summary: string;
+  check: string;
+  evidence: string;
+  scenario: string;
+  impact: string;
+  recommendation: string;
+  affected: readonly string[];
+  fileName: string;
+  filePath: string;
+  code: string;
+};
+
+const safetyFindingCatalog: readonly SafetyFinding[] = [
+  {
+    id: "negative-total",
+    status: "risk",
+    severity: "high",
+    category: "Business logic",
+    title: "Empty orders can produce a negative total",
+    summary: "A valid-looking boundary input violates the payment rule and may turn checkout into a refund.",
+    check: "Executed the pricing function with quantity 0 and compared the result with the business invariant that an order total must be at least $0.",
+    evidence: "The real boundary run returned a total below zero.",
+    scenario: "A shopper or automated client submits an empty cart. Shipping is subtracted from zero, and the negative amount reaches checkout logic.",
+    impact: "Incorrect refunds, broken payment requests, misleading receipts, and reconciliation failures.",
+    recommendation: "Reject quantities below 1 at the API boundary and add shipping instead of subtracting it from the calculated order total.",
+    affected: ["Pricing", "Checkout API", "Payments", "Order receipts"],
+    fileName: "pricing.ts",
+    filePath: "lib/pricing.ts",
+    code: `const total = subtotal - discount - knobs.shippingFee;
+return { subtotal, discount, total };`,
+  },
+  {
+    id: "oversized-input",
+    status: "risk",
+    severity: "high",
+    category: "Input validation",
+    title: "Oversized text has no enforced limit",
+    summary: "Very long names, notes, or payload fields can trigger database exceptions or consume excessive memory and processing time.",
+    check: "Reviewed external string fields for server-side schemas, maximum lengths, request-size limits, and safe Unicode handling.",
+    evidence: "The order note is written after JSON parsing without a visible length constraint or request-body cap.",
+    scenario: "An automated client sends a multi-megabyte note or an unexpectedly long Unicode string repeatedly.",
+    impact: "Character-length exceptions, slow requests, memory pressure, larger storage costs, and denial of service.",
+    recommendation: "Validate every external field on the server, enforce a business-appropriate maximum length, cap request bodies, and return a clear 413 or 422 response.",
+    affected: ["Checkout API", "Database", "Request workers", "Logs"],
+    fileName: "route.ts",
+    filePath: "src/app/api/orders/route.ts",
+    code: `const { note } = await request.json();
+await db.order.create({
+  data: { note },
+});`,
+  },
+  {
+    id: "missing-rate-limit",
+    status: "risk",
+    severity: "critical",
+    category: "Abuse prevention",
+    title: "Checkout has no rate limit or usage quota",
+    summary: "One caller can repeatedly trigger an expensive business flow without a visible per-user, per-IP, or global budget.",
+    check: "Traced the checkout request from the public route through payment creation and looked for throttling, concurrency limits, and cost guardrails.",
+    evidence: "The endpoint immediately starts checkout work; no limiter, quota decision, retry-after response, or provider spending guard appears in the request path.",
+    scenario: "A bot floods checkout with concurrent requests or cycles across accounts to exhaust workers and create payment-provider traffic.",
+    impact: "Service degradation, denial of service, payment-provider costs, noisy alerts, and reduced capacity for real customers.",
+    recommendation: "Apply identity-aware and IP-aware rate limits, cap concurrent checkout work, return Retry-After, and add provider cost alerts and circuit breakers.",
+    affected: ["Edge", "Checkout API", "Payment provider", "Observability"],
+    fileName: "route.ts",
+    filePath: "src/app/api/checkout/route.ts",
+    code: `export async function POST(request: Request) {
+  const input = await request.json();
+  return createCheckout(input);
+}`,
+  },
+  {
+    id: "client-payment-total",
+    status: "risk",
+    severity: "critical",
+    category: "Trust boundaries",
+    title: "Payment amount can cross the client trust boundary",
+    summary: "The amount sent to the payment provider must be recalculated from trusted product data, never accepted from browser state.",
+    check: "Followed the amount from the checkout request to PaymentIntent creation and checked whether the server rebuilds it from trusted prices and quantities.",
+    evidence: "The sample payment path accepts a total from the request body before converting it to cents.",
+    scenario: "A user changes the request payload in developer tools and submits a lower total than the products in the cart require.",
+    impact: "Underpayment, fraudulent orders, accounting mismatches, disputes, and loss of inventory.",
+    recommendation: "Accept only product identifiers and quantities, reload authoritative prices server-side, recalculate the amount, and verify stock before payment creation.",
+    affected: ["Browser", "Checkout API", "Product catalog", "Payments"],
+    fileName: "stripe.ts",
+    filePath: "src/server/stripe.ts",
+    code: `const { total } = await request.json();
+await stripe.paymentIntents.create({
+  amount: Math.round(total * 100),
+  currency: "usd",
+});`,
+  },
+  {
+    id: "missing-idempotency",
+    status: "risk",
+    severity: "high",
+    category: "Resilience",
+    title: "Payment retries are not idempotent",
+    summary: "A timeout or double-click can repeat a successful payment creation when retry attempts do not share an idempotency key.",
+    check: "Reviewed payment creation, client retries, network-error handling, and database writes for a stable request identifier.",
+    evidence: "The payment call has no idempotencyKey option and the order does not show a unique checkout-attempt key.",
+    scenario: "Stripe creates the payment, the response times out, and the client retries the same checkout request.",
+    impact: "Duplicate PaymentIntents, possible duplicate charges, inconsistent orders, support burden, and refund costs.",
+    recommendation: "Create one high-entropy idempotency key per checkout attempt, persist it with the order, and reuse it for every retry of the same operation.",
+    affected: ["Checkout API", "Payments", "Order database", "Retry worker"],
+    fileName: "stripe.ts",
+    filePath: "src/server/stripe.ts",
+    code: `return stripe.paymentIntents.create({
+  amount: amountInCents,
+  currency: "usd",
+});`,
+  },
+  {
+    id: "order-authorization",
+    status: "risk",
+    severity: "critical",
+    category: "Authorization",
+    title: "Order lookup does not prove ownership",
+    summary: "An authenticated user must be authorized for the specific order object, not merely allowed to call the endpoint.",
+    check: "Reviewed object lookup filters and compared the requested order identifier with the authenticated account or workspace.",
+    evidence: "The sample query filters by order id alone; no account, user, or workspace ownership constraint is visible.",
+    scenario: "A signed-in user changes an order id in the URL and receives another customer’s order details.",
+    impact: "Personal-data exposure, order tampering, compliance incidents, and broken tenant isolation.",
+    recommendation: "Scope every object query to the authenticated tenant and subject, deny by default, and add cross-account authorization tests.",
+    affected: ["Orders API", "Authentication", "Database", "Customer data"],
+    fileName: "[orderId].ts",
+    filePath: "src/app/api/orders/[orderId]/route.ts",
+    code: `const order = await db.order.findUnique({
+  where: { id: params.orderId },
+});
+return Response.json(order);`,
+  },
+  {
+    id: "error-disclosure",
+    status: "risk",
+    severity: "medium",
+    category: "Information exposure",
+    title: "Internal error details can reach clients",
+    summary: "Raw exceptions and stack traces can reveal file paths, libraries, queries, and implementation details useful to attackers.",
+    check: "Reviewed API catch blocks, response serialization, structured logging, and correlation-id behavior.",
+    evidence: "The sample handler serializes error.stack into the response body.",
+    scenario: "A malformed request intentionally triggers an exception, and the response exposes internal code locations and dependency details.",
+    impact: "Information disclosure, easier exploit development, accidental personal-data leakage, and confusing customer messages.",
+    recommendation: "Return a generic public error with a correlation id, record structured internal details only in protected logs, and redact secrets and personal data.",
+    affected: ["API responses", "Logs", "Monitoring", "Customer support"],
+    fileName: "route.ts",
+    filePath: "src/app/api/checkout/route.ts",
+    code: `} catch (error) {
+  return Response.json(
+    { error: error.stack },
+    { status: 500 },
+  );
+}`,
+  },
+  {
+    id: "webhook-signature",
+    status: "passed",
+    severity: "verified",
+    category: "Integration security",
+    title: "Payment webhook verifies its signature",
+    summary: "The handler checks the raw payload and Stripe signature before trusting a payment event.",
+    check: "Verified that the raw body, Stripe-Signature header, and endpoint secret are passed to the provider’s verification function before event processing.",
+    evidence: "Signature construction occurs before the event type is read or an order is updated.",
+    scenario: "A forged request without a valid provider signature is rejected before it can mark an order as paid.",
+    impact: "This protection reduces forged-payment events and unauthorized order-state changes.",
+    recommendation: "Keep the signature check first, rotate webhook secrets safely, reject replayed events, and cover invalid signatures in automated tests.",
+    affected: ["Webhook endpoint", "Payments", "Order status", "Secrets"],
+    fileName: "webhook.ts",
+    filePath: "src/app/api/stripe/webhook.ts",
+    code: `const event = stripe.webhooks.constructEvent(
+  rawBody,
+  request.headers.get("stripe-signature"),
+  env.STRIPE_WEBHOOK_SECRET,
+);`,
+  },
+];
+
+type SafetyFilter = "all" | "risks" | "passed";
+
 function SafetyTests({ results, shippingFee }: { results: ReturnType<typeof stressTest>; shippingFee: number }) {
+  const [filter, setFilter] = useState<SafetyFilter>("all");
+  const [query, setQuery] = useState("");
+  const [selectedFindingId, setSelectedFindingId] = useState(safetyFindingCatalog[0].id);
+  const normalizedQuery = query.trim().toLowerCase();
+  const filteredFindings = useMemo(() => safetyFindingCatalog.filter((finding) => {
+    const matchesFilter = filter === "all" || (filter === "risks" ? finding.status === "risk" : finding.status === "passed");
+    const matchesQuery = !normalizedQuery || [finding.title, finding.summary, finding.category, finding.severity, ...finding.affected]
+      .some((value) => value.toLowerCase().includes(normalizedQuery));
+    return matchesFilter && matchesQuery;
+  }), [filter, normalizedQuery]);
+
+  useEffect(() => {
+    if (filteredFindings.length > 0 && !filteredFindings.some((finding) => finding.id === selectedFindingId)) {
+      setSelectedFindingId(filteredFindings[0].id);
+    }
+  }, [filteredFindings, selectedFindingId]);
+
+  const selectedFinding = safetyFindingCatalog.find((finding) => finding.id === selectedFindingId) ?? safetyFindingCatalog[0];
+  const emptyOrder = results.find((result) => result.quantity === 0);
+  const selectedEvidence = selectedFinding.id === "negative-total"
+    ? `The executed quantity-0 check expected at least $0.00 and received −${preciseMoney.format(Math.abs(emptyOrder?.total ?? shippingFee))}.`
+    : selectedFinding.evidence;
+  const severityLabels = { critical: "Critical", high: "High", medium: "Medium", verified: "Verified" } as const;
+
   return (
-    <div className="tests-layout">
-      <section className="panel test-list-panel">
-        <div className="panel-heading"><span className="section-kicker">5 REAL RUNS</span><h2>VCAIST tried the awkward cases for you</h2><p>These are actual outputs from the connected pricing function.</p></div>
-        <div className="test-list">
-          {results.map((result) => (
-            <div className={result.passed ? "test-row" : "test-row failed"} key={result.quantity}>
-              <span className="test-state" aria-hidden="true">{result.passed ? "✓" : "!"}</span>
-              <div><strong>{result.quantity === 0 ? "An empty order" : `${result.quantity} item${result.quantity === 1 ? "" : "s"}`}</strong><small>{result.passed ? "The total stays sensible" : "The total drops below $0"}</small></div>
-              <output>{preciseMoney.format(result.total)}</output>
-              <span className={result.passed ? "result-pill" : "result-pill failed"}>{result.passed ? "Passed" : "Found issue"}</span>
-            </div>
-          ))}
+    <div className="tests-layout safety-review-layout">
+      <section className="panel test-list-panel safety-findings-panel">
+        <div className="safety-review-heading">
+          <div><span className="section-kicker">SYSTEM-WIDE SAFETY REVIEW</span><h2>Errors and security risks across the application</h2><p>Business behavior, APIs, trust boundaries, abuse controls, payments, and resilience are reviewed together.</p></div>
+          <span className="review-scope-pill">Guided architecture review</span>
         </div>
+
+        <div className="safety-review-boundary" role="note"><span aria-hidden="true">i</span><p><strong>What is real in this prototype?</strong>The pricing boundary test executes the bundled ShopSpring function. Security findings are guided code-review examples based on the sample architecture, not proof that an imported project was exploited.</p></div>
+
+        <div className="safety-toolbar">
+          <div className="safety-filter" aria-label="Filter safety findings">
+            {(["all", "risks", "passed"] as const).map((option) => <button type="button" className={filter === option ? "active" : ""} onClick={() => setFilter(option)} key={option}>{option === "all" ? "All findings" : option === "risks" ? "Risks only" : "Passed protections"}</button>)}
+          </div>
+          <label className="safety-search"><span aria-hidden="true">⌕</span><span className="sr-only">Search safety findings</span><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search risks or systems" /></label>
+        </div>
+
+        <ul className="safety-finding-list" aria-label="Application safety findings">
+          {filteredFindings.map((finding) => (
+            <li key={finding.id}>
+              <button type="button" className={`${finding.status} ${selectedFinding.id === finding.id ? "selected" : ""}`} onClick={() => setSelectedFindingId(finding.id)} aria-pressed={selectedFinding.id === finding.id}>
+                <span className={`finding-severity-icon ${finding.severity}`} aria-hidden="true">{finding.status === "passed" ? "✓" : finding.severity === "critical" ? "C" : finding.severity === "high" ? "H" : "M"}</span>
+                <span className="finding-list-copy"><span>{finding.category}</span><strong>{finding.title}</strong><small>{finding.summary}</small></span>
+                <span className={`finding-severity-pill ${finding.severity}`}>{severityLabels[finding.severity]}</span>
+                <span className="finding-open-icon" aria-hidden="true">→</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+
+        {filteredFindings.length === 0 ? <div className="safety-empty-state" role="status"><span aria-hidden="true">⌕</span><strong>No findings match this search.</strong><button type="button" className="text-button" onClick={() => { setQuery(""); setFilter("all"); }}>Clear filters</button></div> : null}
       </section>
 
-      <aside className="panel test-detail">
-        <div className="issue-flag">ISSUE DETAILS</div><h2>Empty orders become negative</h2>
-        <p className="test-summary">Expected at least <strong>$0.00</strong>, but received <strong>−{preciseMoney.format(shippingFee)}</strong>.</p>
-        <div className="code-window" aria-label="Relevant code">
-          <div className="code-window-top"><span /><span /><span /><small>pricing.ts</small></div>
-          <pre><code><span className="code-muted">// Shipping should be added</span>{"\n"}<span className="code-keyword">return</span> subtotal - discount <mark>- SHIPPING_FEE</mark>;</code></pre>
+      <aside className={`panel test-detail safety-detail-panel ${selectedFinding.status}`} aria-live="polite">
+        <div className="safety-detail-tags"><span>{selectedFinding.category}</span><span className={selectedFinding.severity}>{severityLabels[selectedFinding.severity]}</span></div>
+        <h2>{selectedFinding.title}</h2>
+        <p className="safety-detail-summary">{selectedFinding.summary}</p>
+
+        <div className="safety-risk-path" aria-label="Risk path">
+          <div><span>1</span><strong>Trigger</strong><small>{selectedFinding.category}</small></div><i aria-hidden="true">→</i>
+          <div><span>2</span><strong>Weakness</strong><small>{selectedFinding.status === "passed" ? "Protection present" : "Guard missing"}</small></div><i aria-hidden="true">→</i>
+          <div><span>3</span><strong>Impact</strong><small>{selectedFinding.affected[0]}</small></div>
         </div>
-        <div className="suggested-fix"><span className="fix-icon" aria-hidden="true">✓</span><div><strong>Suggested safe fix</strong><p>Add shipping to the total and stop checkout when quantity is 0.</p></div></div>
-        <button className="button disabled full" disabled title="Patch approvals are planned for a later version">Prepare fix for approval · Coming soon</button>
+
+        <section className="safety-detail-section"><span>HOW VCAIST CHECKED</span><p>{selectedFinding.check}</p></section>
+        <section className="safety-detail-section"><span>EVIDENCE</span><p>{selectedEvidence}</p></section>
+
+        <div className="code-window safety-code-window" aria-label={`Relevant code in ${selectedFinding.fileName}`}>
+          <div className="code-window-top"><span /><span /><span /><small>{selectedFinding.filePath}</small></div>
+          <pre><code>{selectedFinding.code}</code></pre>
+        </div>
+
+        <section className="safety-detail-section"><span>FAILURE OR ATTACK SCENARIO</span><p>{selectedFinding.scenario}</p></section>
+        <section className="safety-detail-section"><span>BUSINESS AND SYSTEM IMPACT</span><p>{selectedFinding.impact}</p></section>
+
+        <div className="affected-system-list" aria-label="Affected systems">{selectedFinding.affected.map((system) => <span key={system}>{system}</span>)}</div>
+
+        <div className={`safety-recommendation ${selectedFinding.status}`}><span aria-hidden="true">{selectedFinding.status === "passed" ? "✓" : "↳"}</span><div><strong>{selectedFinding.status === "passed" ? "Keep this protection" : "Recommended protection"}</strong><p>{selectedFinding.recommendation}</p></div></div>
+        <button className="button disabled full" disabled title="Patch approvals are planned for a later version">Prepare reviewed fix for approval · Coming soon</button>
       </aside>
     </div>
   );

@@ -10,7 +10,7 @@ The current prototype demonstrates the complete product loop with a sample comme
 - Finds adjustable business values such as prices, discounts, thresholds, and fees.
 - Lets users choose a local project folder, a Google Drive folder, or a public GitHub repository as the project source.
 - Connects those values to responsive controls that re-run the sample app logic immediately.
-- Stress-tests awkward inputs and translates failures into business impact.
+- Combines executed business-logic checks with guided system-design and security review, then translates every risk into understandable impact and protection guidance.
 - Keeps humans in the loop. This prototype never publishes a code change.
 
 ## Environment Setup & Hardware Requirements
@@ -76,7 +76,7 @@ The interface uses a desktop sidebar, fluid content grids, touch-friendly contro
 - **Business controls** — four sliders bound to the sample app's price, discount, discount threshold, and shipping fee.
 - **Live sandbox** — re-runs the connected pricing function without touching live customers or production data.
 - **App map** — toggles between a plain-English purchase flow and the corresponding technical path. Every diagram step is interactive and opens its mapped file in a line-numbered, read-only source workspace below the flow, with an application-flow file list and highlighted relevant lines.
-- **Safety tests** — runs five boundary scenarios and exposes the zero-quantity negative-total defect with relevant code and a proposed remedy.
+- **Safety tests** — presents a searchable, clickable system-wide findings list instead of only customer-facing edge cases. It combines the executed zero-quantity pricing check with guided code and architecture review for input-length limits, rate limiting, client/server trust boundaries, payment idempotency, object authorization, error disclosure, and webhook verification. Every finding opens full evidence, failure or attack scenarios, affected systems, and recommended protections.
 - **Help center** — quick-start instructions and plain-language answers to common trust and safety questions.
 - **Settings** — a tiered model-and-price comparison, scan behavior, test coverage, explanation preferences, and four persistent color themes saved locally on the device. Midnight Clay is the black-background default, with Midnight Sky, Forest Mint, and Warm Light alternatives. Shared semantic surfaces and WCAG-informed contrast tokens keep labels, status colors, boundaries, and controls legible in every theme. Model prices are presented per one million input/output tokens and include a visible date and provider-pricing caveat.
 
@@ -96,7 +96,7 @@ The interface uses a desktop sidebar, fluid content grids, touch-friendly contro
 
 ### Current boundaries
 
-Folder and repository imports are session-only: local files stay in the browser, GitHub imports read the public repository tree, and Google Drive uses an in-memory read-only access token. The interface clearly distinguishes completed source-file indexing from project-specific AI analysis. Extracted business controls and the four-page carousel still use the bundled ShopSpring fixture; no background AI job continues after indexing finishes. The change assistant demonstrates the complete consent flow and records sandbox approval locally, but it does not edit connected source files. AI-powered repository analysis, project-specific rendering, durable project storage, private GitHub access, patch generation, and approval-based publishing are the next backend milestones.
+Folder and repository imports are session-only: local files stay in the browser, GitHub imports read the public repository tree, and Google Drive uses an in-memory read-only access token. The interface clearly distinguishes completed source-file indexing from project-specific AI analysis. Extracted business controls, the four-page carousel, and security architecture findings still use the bundled ShopSpring fixture; only the pricing boundary test executes real fixture code. No background AI job continues after indexing finishes. The change assistant demonstrates the complete consent flow and records sandbox approval locally, but it does not edit connected source files. AI-powered repository analysis, project-specific rendering and security testing, durable project storage, private GitHub access, patch generation, and approval-based publishing are the next backend milestones.
 
 ## What comes After
 
