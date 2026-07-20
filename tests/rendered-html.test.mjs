@@ -18,6 +18,7 @@ import {
   modelOptions,
   themeOptions,
 } from "../lib/preferences.ts";
+import { modelRegistry } from "../lib/ai/model-registry.ts";
 
 const templateRoot = new URL("../", import.meta.url);
 
@@ -39,6 +40,17 @@ async function render(pathname = "/") {
       waitUntil() {},
       passThroughOnException() {},
     },
+  );
+}
+
+async function requestWorker(pathname, init) {
+  const workerUrl = new URL("../dist/server/index.js", import.meta.url);
+  workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}-${pathname}-api`);
+  const { default: worker } = await import(workerUrl.href);
+  return worker.fetch(
+    new Request(`http://localhost${pathname}`, init),
+    { ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) } },
+    { waitUntil() {}, passThroughOnException() {} },
   );
 }
 
@@ -176,6 +188,56 @@ test("offers the complete supported model and appearance catalogs", () => {
   assert.doesNotMatch(modelOptions.map((model) => model.menuPrice).join(" "), /intro|standard|Sep|>/i);
 });
 
+test("routes every verified dropdown model through a server-only provider registry", async () => {
+  assert.deepEqual(Object.keys(modelRegistry).sort(), modelOptions.map((model) => model.id).sort());
+  assert.deepEqual(new Set(Object.values(modelRegistry).map((model) => model.requiredSecret)), new Set([
+    "MOONSHOT_API_KEY",
+    "DASHSCOPE_API_KEY",
+    "GEMINI_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "OPENAI_API_KEY",
+  ]));
+  assert.equal(modelRegistry["kimi-k2.7-code"].enabled, false);
+
+  const [dashboard, router, modelsRoute, chatRoute] = await Promise.all([
+    readFile(new URL("../app/Dashboard.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/ai/router.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/ai/models/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/ai/chat/route.ts", import.meta.url), "utf8"),
+  ]);
+  const clientSource = `${dashboard}\n${await readFile(new URL("../lib/preferences.ts", import.meta.url), "utf8")}`;
+  assert.doesNotMatch(clientSource, /(?:OPENAI|ANTHROPIC|GEMINI|DASHSCOPE|MOONSHOT)_API_KEY/);
+  assert.doesNotMatch(`${router}\n${modelsRoute}\n${chatRoute}`, /NEXT_PUBLIC_/);
+  assert.match(dashboard, /fetch\("\/api\/ai\/models"/);
+  assert.match(dashboard, /fetch\("\/api\/ai\/chat"/);
+  assert.match(dashboard, /This model is currently unavailable\. Please select another AI model\./);
+  assert.match(chatRoute, /maximumMessageCharacters = 4_000/);
+  assert.match(chatRoute, /checkAiRateLimit/);
+
+  const modelsResponse = await requestWorker("/api/ai/models", { headers: { accept: "application/json" } });
+  assert.equal(modelsResponse.status, 200);
+  const availability = await modelsResponse.json();
+  assert.ok(Array.isArray(availability.models));
+  assert.ok(availability.models.every((entry) => typeof entry.id === "string" && typeof entry.available === "boolean"));
+  assert.doesNotMatch(JSON.stringify(availability), /_API_KEY|Bearer|sk-/i);
+
+  const unavailableResponse = await requestWorker("/api/ai/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-forwarded-for": "203.0.113.9" },
+    body: JSON.stringify({
+      model: "not-a-real-model",
+      project: "Synthetic project",
+      page: "Home (/)",
+      messages: [{ role: "user", text: "Make the heading clearer." }],
+    }),
+  });
+  assert.equal(unavailableResponse.status, 503);
+  assert.deepEqual(await unavailableResponse.json(), {
+    code: "MODEL_UNAVAILABLE",
+    message: "This model is currently unavailable. Please select another AI model.",
+  });
+});
+
 test("uses semantic, high-contrast surfaces throughout every theme", async () => {
   const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
   assert.match(css, /\.source-preview button \{[\s\S]*?color: var\(--ink\);[\s\S]*?background: var\(--surface\);/);
@@ -212,7 +274,7 @@ test("keeps Current Application focused on its consent-first page carousel", asy
   assert.match(source, /id: "application", label: "Current Application"/);
   assert.match(source, /aria-roledescription="carousel"/);
   assert.match(source, /Home[\s\S]*Catalog[\s\S]*Cart[\s\S]*Checkout/);
-  assert.match(source, /function CurrentApplication[\s\S]*?<ApplicationCarousel project=\{project\} \/>/);
+  assert.match(source, /function CurrentApplication[\s\S]*?<ApplicationCarousel project=\{project\} model=\{model\} onModelUnavailable=\{onModelUnavailable\} \/>/);
   assert.doesNotMatch(source, /function Overview\(/);
   assert.doesNotMatch(source, /APPLICATION INTELLIGENCE|Est\. monthly revenue|What happens when an order changes|A zero-item order pays the customer|function MetricCard|function CompactKnob/);
   assert.match(source, /May I help plan changes to this application\?/);

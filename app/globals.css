@@ -408,6 +408,11 @@ strong {
   z-index: 1;
 }
 
+.model-picker.unavailable .model-dot {
+  background: var(--coral);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--coral) 16%, transparent);
+}
+
 .button {
   display: inline-flex;
   align-items: center;
@@ -1696,6 +1701,17 @@ strong {
 
 .chat-bubble strong { display: block; margin-bottom: 3px; font-size: 8px; }
 .chat-bubble p { margin: 0; color: var(--muted); font-size: 8px; line-height: 1.55; }
+
+.chat-bubble.thinking p::after {
+  content: "";
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin-left: 5px;
+  background: var(--green);
+  border-radius: 50%;
+  animation: ai-thinking 800ms ease-in-out infinite alternate;
+}
 
 .proposal-permission {
   margin-bottom: 9px;
@@ -5702,6 +5718,70 @@ strong {
   background: rgba(19, 29, 25, 0.58);
   backdrop-filter: blur(7px);
   z-index: 100;
+}
+
+.model-unavailable-backdrop {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 22px;
+  background: rgba(4, 9, 7, 0.74);
+  backdrop-filter: blur(9px);
+  z-index: 120;
+}
+
+.model-unavailable-dialog {
+  position: relative;
+  width: min(430px, 100%);
+  padding: 30px;
+  color: var(--ink);
+  text-align: center;
+  background:
+    radial-gradient(circle at 100% 0, color-mix(in srgb, var(--coral) 18%, transparent), transparent 38%),
+    var(--surface);
+  border: 1px solid color-mix(in srgb, var(--coral) 48%, var(--line));
+  border-radius: 20px;
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.46), 0 0 0 1px color-mix(in srgb, var(--blue) 10%, transparent);
+  animation: dialog-in 180ms ease-out both;
+}
+
+.model-unavailable-dialog .dialog-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+}
+
+.model-unavailable-icon {
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+  margin: 0 auto 15px;
+  color: var(--accent-contrast);
+  font-size: 23px;
+  font-weight: 900;
+  background: var(--coral);
+  border-radius: 17px 17px 17px 5px;
+  box-shadow: 0 14px 32px color-mix(in srgb, var(--coral) 28%, transparent);
+}
+
+.model-unavailable-dialog h2 {
+  margin: 8px 0 7px;
+  font-size: 23px;
+  line-height: 1.18;
+}
+
+.model-unavailable-dialog p {
+  margin: 0 0 20px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+@keyframes ai-thinking {
+  from { opacity: 0.35; transform: scale(0.8); }
+  to { opacity: 1; transform: scale(1.15); }
 }
 
 .import-dialog {

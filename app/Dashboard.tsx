@@ -7,6 +7,7 @@ import type { ImportedProject } from "@/lib/import-sources";
 import {
   defaultPreferences,
   modelGroups,
+  modelOptions,
   readPreferences,
   writePreferences,
   type ModelId,
@@ -14,6 +15,7 @@ import {
 import { defaultKnobs, stressTest, type PricingKnobs } from "@/lib/pricing";
 
 type WorkspaceView = "overview" | "application" | "compare" | "map" | "tests";
+type ModelAvailability = Partial<Record<ModelId, boolean>>;
 
 const workspaceViewGuides: Record<WorkspaceView, {
   eyebrow: string;
@@ -102,6 +104,8 @@ export function Dashboard({ startWithImporter = false }: { startWithImporter?: b
   const [view, setView] = useState<WorkspaceView>("overview");
   const [knobs] = useState<PricingKnobs>(defaultKnobs);
   const [model, setModel] = useState<ModelId>(defaultPreferences.model);
+  const [modelAvailability, setModelAvailability] = useState<ModelAvailability>({});
+  const [unavailableModel, setUnavailableModel] = useState<ModelId | null>(null);
   const [scanning, setScanning] = useState(false);
   const [scanCacheHit, setScanCacheHit] = useState(false);
   const [scanMessage, setScanMessage] = useState(
@@ -133,13 +137,32 @@ export function Dashboard({ startWithImporter = false }: { startWithImporter?: b
   }, []);
 
   useEffect(() => {
-    setModel(readPreferences().model);
+    const timer = window.setTimeout(() => setModel(readPreferences().model), 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    fetch("/api/ai/models", { cache: "no-store" })
+      .then(async (response) => response.ok ? response.json() as Promise<{ models?: Array<{ id: ModelId; available: boolean }> }> : null)
+      .then((body) => {
+        if (!active || !body?.models) return;
+        setModelAvailability(Object.fromEntries(body.models.map((entry) => [entry.id, entry.available])) as ModelAvailability);
+      })
+      .catch(() => {
+        // The chat endpoint remains the source of truth if availability cannot load.
+      });
+    return () => { active = false; };
   }, []);
 
   const testResults = useMemo(() => stressTest(knobs), [knobs]);
   const runtimeErrorCount = testResults.filter((result) => !result.passed).length;
 
   function updateModel(nextModel: ModelId) {
+    if (modelAvailability[nextModel] === false) {
+      setUnavailableModel(nextModel);
+      return;
+    }
     setModel(nextModel);
     writePreferences({ ...readPreferences(), model: nextModel });
   }
@@ -184,14 +207,14 @@ export function Dashboard({ startWithImporter = false }: { startWithImporter?: b
             : "Connect a project directly, without starting the tutorial or financial demo."}</p>
         </div>
         <div className="header-actions">
-          <label className="model-picker">
+          <label className={modelAvailability[model] === false ? "model-picker unavailable" : "model-picker"}>
             <span className="model-dot" aria-hidden="true" />
             <span className="sr-only">AI model</span>
             <select value={model} onChange={(event) => updateModel(event.target.value as ModelId)} aria-label="AI model">
               {modelGroups.map((group) => (
                 <optgroup label={group.menuLabel} key={group.label}>
                   {group.options.map((option) => (
-                    <option value={option.id} key={option.id}>{option.label} · USD {option.menuPrice} per 1M tokens</option>
+                    <option value={option.id} key={option.id}>{option.label} · USD {option.menuPrice} per 1M tokens{modelAvailability[option.id] === false ? " · unavailable" : ""}</option>
                   ))}
                 </optgroup>
               ))}
@@ -268,7 +291,7 @@ export function Dashboard({ startWithImporter = false }: { startWithImporter?: b
         ) : null}
 
         {projectReady && view === "application" ? (
-          <CurrentApplication project={project} />
+          <CurrentApplication project={project} model={model} onModelUnavailable={() => setUnavailableModel(model)} />
         ) : null}
 
         {projectReady && view === "compare" ? (
@@ -313,6 +336,9 @@ export function Dashboard({ startWithImporter = false }: { startWithImporter?: b
             setComparisonImportOpen(false);
           }}
         />
+      ) : null}
+      {unavailableModel ? (
+        <ModelUnavailableDialog model={unavailableModel} onClose={() => setUnavailableModel(null)} />
       ) : null}
     </AppChrome>
   );
@@ -381,7 +407,15 @@ type AssistantPermission = "pending" | "granted" | "declined";
 type ProposalState = "none" | "ready" | "approved";
 type ChatMessage = { role: "assistant" | "user"; text: string };
 
-function ApplicationCarousel({ project }: { project: ImportedProject }) {
+function ApplicationCarousel({
+  project,
+  model,
+  onModelUnavailable,
+}: {
+  project: ImportedProject;
+  model: ModelId;
+  onModelUnavailable: () => void;
+}) {
   const [activeIndex, setActiveIndex] = useState(0);
   const activePage = applicationPages[activeIndex];
 
@@ -401,7 +435,7 @@ function ApplicationCarousel({ project }: { project: ImportedProject }) {
       <div className="application-carousel-layout">
         <ApplicationInterfaceCarousel project={project} activeIndex={activeIndex} onPageChange={setActiveIndex} contextLabel="Preview" />
 
-        <AiChangeAssistant page={activePage} projectName={project.name} />
+        <AiChangeAssistant page={activePage} projectName={project.name} model={model} onModelUnavailable={onModelUnavailable} />
       </div>
     </section>
   );
@@ -544,11 +578,23 @@ function ComparisonAppCarousel({ project, label, contextLabel }: { project: Impo
   );
 }
 
-function AiChangeAssistant({ page, projectName }: { page: ApplicationPage; projectName: string }) {
+function AiChangeAssistant({
+  page,
+  projectName,
+  model,
+  onModelUnavailable,
+}: {
+  page: ApplicationPage;
+  projectName: string;
+  model: ModelId;
+  onModelUnavailable: () => void;
+}) {
   const [permission, setPermission] = useState<AssistantPermission>("pending");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [message, setMessage] = useState("");
   const [proposalState, setProposalState] = useState<ProposalState>("none");
+  const [submitting, setSubmitting] = useState(false);
+  const modelLabel = modelOptions.find((option) => option.id === model)?.label ?? model;
 
   function grantPermission() {
     setPermission("granted");
@@ -564,21 +610,48 @@ function AiChangeAssistant({ page, projectName }: { page: ApplicationPage; proje
     setProposalState("none");
   }
 
-  function submitMessage(event: FormEvent<HTMLFormElement>) {
+  async function submitMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const request = message.trim();
-    if (!request || permission !== "granted") return;
+    if (!request || permission !== "granted" || submitting) return;
 
-    setMessages((current) => [
-      ...current,
-      { role: "user", text: request },
-      {
-        role: "assistant",
-        text: `I can prepare “${request}” as a reviewable draft for the ${page.name} page. I will not apply it to the sandbox or the live app unless you approve the next step.`,
-      },
-    ]);
+    const userMessage: ChatMessage = { role: "user", text: request };
+    const nextMessages: ChatMessage[] = [...messages, userMessage].slice(-10);
+    setMessages(nextMessages);
     setMessage("");
-    setProposalState("ready");
+    setSubmitting(true);
+
+    try {
+      const response = await fetch("/api/ai/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model,
+          project: projectName,
+          page: `${page.name} (${page.route})`,
+          messages: nextMessages,
+        }),
+      });
+      const body = await response.json() as { code?: string; message?: string; output?: string };
+      if (!response.ok || typeof body.output !== "string" || !body.output.trim()) {
+        if (body.code === "MODEL_UNAVAILABLE" || response.status === 503) {
+          onModelUnavailable();
+        } else {
+          setMessages((current) => [...current, {
+            role: "assistant",
+            text: body.message || "I could not prepare that plan. Please wait a moment and try again.",
+          }]);
+        }
+        return;
+      }
+
+      setMessages((current) => [...current, { role: "assistant", text: body.output!.trim() }]);
+      setProposalState("ready");
+    } catch {
+      onModelUnavailable();
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   function approveProposal() {
@@ -596,7 +669,7 @@ function AiChangeAssistant({ page, projectName }: { page: ApplicationPage; proje
     <aside className="ai-change-chat" aria-labelledby="ai-change-chat-title">
       <div className="ai-chat-heading">
         <span className="ai-avatar" aria-hidden="true">AI</span>
-        <div><h3 id="ai-change-chat-title">Change assistant</h3><p>Permission required · live app protected</p></div>
+        <div><h3 id="ai-change-chat-title">Change assistant</h3><p>{modelLabel} · permission required · live app protected</p></div>
         <span className={permission === "granted" ? "assistant-status allowed" : "assistant-status"}>{permission === "granted" ? "Allowed" : "Locked"}</span>
       </div>
 
@@ -622,13 +695,14 @@ function AiChangeAssistant({ page, projectName }: { page: ApplicationPage; proje
 
       {permission === "granted" ? (
         <>
-          <div className="chat-message-list" aria-live="polite">
+          <div className="chat-message-list" aria-live="polite" aria-busy={submitting}>
             {messages.map((chatMessage, index) => (
               <div className={`chat-bubble ${chatMessage.role}`} key={`${chatMessage.role}-${index}`}>
                 <strong>{chatMessage.role === "assistant" ? "VCAIST AI" : "You"}</strong>
                 <p>{chatMessage.text}</p>
               </div>
             ))}
+            {submitting ? <div className="chat-bubble assistant thinking"><strong>VCAIST AI</strong><p>Preparing a reviewable plan…</p></div> : null}
           </div>
 
           {proposalState === "ready" ? (
@@ -649,8 +723,10 @@ function AiChangeAssistant({ page, projectName }: { page: ApplicationPage; proje
               onChange={(event) => setMessage(event.target.value)}
               placeholder={`Ask for a change to ${page.name}…`}
               rows={3}
+              maxLength={4000}
+              disabled={submitting}
             />
-            <button type="submit" className="button dark" disabled={!message.trim()}>Send request <span aria-hidden="true">↑</span></button>
+            <button type="submit" className="button dark" disabled={!message.trim() || submitting}>{submitting ? "Thinking…" : "Send request"} <span aria-hidden="true">↑</span></button>
           </form>
         </>
       ) : null}
@@ -700,10 +776,35 @@ function ApplicationPagePreview({ page, projectName }: { page: ApplicationPage; 
   );
 }
 
-function CurrentApplication({ project }: { project: ImportedProject }) {
+function CurrentApplication({ project, model, onModelUnavailable }: { project: ImportedProject; model: ModelId; onModelUnavailable: () => void }) {
   return (
     <div className="view-stack">
-      <ApplicationCarousel project={project} />
+      <ApplicationCarousel project={project} model={model} onModelUnavailable={onModelUnavailable} />
+    </div>
+  );
+}
+
+function ModelUnavailableDialog({ model, onClose }: { model: ModelId; onClose: () => void }) {
+  const label = modelOptions.find((option) => option.id === model)?.label ?? model;
+
+  useEffect(() => {
+    function closeOnEscape(event: globalThis.KeyboardEvent) {
+      if (event.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [onClose]);
+
+  return (
+    <div className="model-unavailable-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <section className="model-unavailable-dialog" role="dialog" aria-modal="true" aria-labelledby="model-unavailable-title" aria-describedby="model-unavailable-description">
+        <button type="button" className="dialog-close" onClick={onClose} aria-label="Close model unavailable message">×</button>
+        <span className="model-unavailable-icon" aria-hidden="true">!</span>
+        <span className="section-kicker">MODEL UNAVAILABLE</span>
+        <h2 id="model-unavailable-title">{label} cannot be used right now</h2>
+        <p id="model-unavailable-description">This model is currently unavailable. Please select another AI model.</p>
+        <button type="button" className="button dark full" onClick={onClose}>Choose another AI model</button>
+      </section>
     </div>
   );
 }
@@ -1404,13 +1505,10 @@ function SafetyTests({ results, shippingFee }: { results: ReturnType<typeof stre
     return matchesFilter && matchesQuery;
   }), [filter, normalizedQuery]);
 
-  useEffect(() => {
-    if (filteredFindings.length > 0 && !filteredFindings.some((finding) => finding.id === selectedFindingId)) {
-      setSelectedFindingId(filteredFindings[0].id);
-    }
-  }, [filteredFindings, selectedFindingId]);
-
-  const selectedFinding = safetyFindingsByPriority.find((finding) => finding.id === selectedFindingId) ?? safetyFindingsByPriority[0];
+  const selectedFinding = filteredFindings.find((finding) => finding.id === selectedFindingId)
+    ?? filteredFindings[0]
+    ?? safetyFindingsByPriority.find((finding) => finding.id === selectedFindingId)
+    ?? safetyFindingsByPriority[0];
   const emptyOrder = results.find((result) => result.quantity === 0);
   const selectedEvidence = selectedFinding.id === "negative-total"
     ? `The executed quantity-0 check expected at least $0.00 and received −${preciseMoney.format(Math.abs(emptyOrder?.total ?? shippingFee))}.`

@@ -171,7 +171,11 @@ export const modelGroups = [
   },
 ] as const;
 
-export const modelOptions = modelGroups.flatMap((group) => group.options);
+export const modelOptions = [
+  ...modelGroups[0].options,
+  ...modelGroups[1].options,
+  ...modelGroups[2].options,
+] as const;
 export type ModelId = (typeof modelOptions)[number]["id"];
 
 export const themeOptions = [

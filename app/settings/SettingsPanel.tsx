@@ -22,9 +22,12 @@ export function SettingsPanel() {
   const activeModel = modelOptions.find((option) => option.id === preferences.model) ?? modelOptions[0];
 
   useEffect(() => {
-    const stored = readPreferences();
-    setPreferences(stored);
-    applyTheme(stored.theme);
+    const timer = window.setTimeout(() => {
+      const stored = readPreferences();
+      setPreferences(stored);
+      applyTheme(stored.theme);
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   function toggle(key: TogglePreference) {
