@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-type Destination = "workspace" | "help" | "settings";
+type Destination = "workspace" | "about" | "help" | "settings";
 
 const destinations: Array<{
   id: Destination;
@@ -10,6 +10,7 @@ const destinations: Array<{
   symbol: string;
 }> = [
   { id: "workspace", href: "/demo", label: "Workspace", symbol: "⌂" },
+  { id: "about", href: "/about", label: "About", symbol: "i" },
   { id: "help", href: "/help", label: "Help center", symbol: "?" },
   { id: "settings", href: "/settings", label: "Settings", symbol: "⚙" },
 ];

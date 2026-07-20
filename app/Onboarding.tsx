@@ -197,7 +197,7 @@ export function Onboarding() {
       <footer className="welcome-footer">
         <Link className="brand" href="/" aria-label="VCAIST home"><span className="brand-mark" aria-hidden="true">V</span><span>VCAIST</span></Link>
         <p>No jargon. No surprise changes. You stay in control.</p>
-        <div><Link href="/help">Help center</Link><Link href="/settings">Settings</Link><Link href="/demo">Demo</Link></div>
+        <div><Link href="/about">About</Link><Link href="/help">Help center</Link><Link href="/settings">Settings</Link><Link href="/demo">Demo</Link></div>
       </footer>
     </div>
   );

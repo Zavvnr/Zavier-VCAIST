@@ -138,6 +138,19 @@ test("server-renders the help and settings routes", async () => {
   assert.match(settingsHtml, /Prices are public list prices/);
 });
 
+test("routes About back to the starting tutorial page", async () => {
+  const response = await render("/about");
+  assert.ok([302, 307, 308].includes(response.status));
+  assert.equal(new URL(response.headers.get("location"), "http://localhost").pathname, "/");
+
+  const chrome = await readFile(new URL("../app/components/AppChrome.tsx", import.meta.url), "utf8");
+  const onboarding = await readFile(new URL("../app/Onboarding.tsx", import.meta.url), "utf8");
+  const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  assert.match(chrome, /id: "about", href: "\/about", label: "About"/);
+  assert.match(onboarding, /<Link href="\/about">About<\/Link>/);
+  assert.match(css, /\.mobile-nav \{[\s\S]*?grid-template-columns: repeat\(4, 1fr\);/);
+});
+
 test("offers the complete supported model and appearance catalogs", () => {
   assert.deepEqual(modelOptions.map((model) => model.id), [
     "gpt-5.5-pro",
