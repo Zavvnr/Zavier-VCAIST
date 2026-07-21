@@ -17,7 +17,7 @@ import {
   summarizeProjectFiles,
   summarizeProjectFilesSafely,
 } from "../lib/import-sources.ts";
-import { analyzeProjectSources } from "../lib/project-analysis.ts";
+import { analyzeProjectSources, referencedProjectAssetPaths } from "../lib/project-analysis.ts";
 import {
   defaultPreferences,
   modelOptions,
@@ -70,13 +70,41 @@ test("renders approved static HTML as a real isolated interface", () => {
   assert.deepEqual(analysis.navigationGraph.edges.map((edge) => edge.label), ["Experience", "Contact"]);
 });
 
+test("keeps a complete embedded image instead of truncating the generated preview", () => {
+  const largeImage = `data:image/jpeg;base64,${"A".repeat(700_000)}`;
+  const analysis = analyzeProjectSources({
+    name: "Large photo portfolio",
+    sourcePaths: ["index.html"],
+    documents: [{ path: "index.html", content: '<main><img src="assets/photo.jpg"><p id="after-photo">Still complete</p></main>' }],
+    assets: [{ path: "assets/photo.jpg", mimeType: "image/jpeg", fileName: "photo.jpg", dataUrl: largeImage }],
+  });
+  const preview = analysis.pages[0].previewHtml ?? "";
+  assert.match(preview, /src="data:image\/jpeg;base64,/);
+  assert.match(preview, /id="after-photo">Still complete/);
+  assert.ok(preview.length > 700_000);
+});
+
+test("selects only referenced approved assets and supports generic downloads", () => {
+  const documents = [{
+    path: "site/index.html",
+    content: '<img src="../media/portrait.jfif"><a href="files/Resume%202026.pdf" download>View Resume</a>',
+  }];
+  const selected = referencedProjectAssetPaths(documents, [
+    "media/portrait.jfif",
+    "site/files/Resume 2026.pdf",
+    "private/unreferenced.zip",
+  ]);
+  assert.deepEqual(selected.sort(), ["media/portrait.jfif", "site/files/Resume 2026.pdf"]);
+});
+
 test("reads only approved source after privacy exclusions", async () => {
   const reads = new Map();
   const assetReads = new Map();
-  const file = (path, content) => ({
+  const file = (path, content, options = {}) => ({
     name: path.split("/").at(-1),
     webkitRelativePath: `Portfolio/${path}`,
-    size: content.length,
+    size: options.size ?? content.length,
+    type: options.type ?? "",
     lastModified: 1,
     async text() {
       reads.set(path, (reads.get(path) ?? 0) + 1);
@@ -88,12 +116,14 @@ test("reads only approved source after privacy exclusions", async () => {
     },
   });
   const summary = await summarizeProjectFilesSafely([
-    file(".gitignore", ".env.local\nsrc/ignored.ts\nignored.png\n"),
+    file(".gitignore", ".env.local\nsrc/ignored.ts\nignored.png\nprivate.pdf\n"),
     file(".env.local", "OPENAI_API_KEY=must-not-be-read"),
     file("src/ignored.ts", "const privateDraft = true"),
     file("ignored.png", "blocked-image"),
-    file("index.html", "<main><h1>My Portfolio</h1><img src=\"portrait.png\"><section id=\"projects\"><h2>Projects</h2></section></main>"),
-    file("portrait.png", "approved-image"),
+    file("private.pdf", "blocked-document"),
+    file("index.html", "<main><h1>My Portfolio</h1><img src=\"portrait.jfif\"><a href=\"downloads/profile.pdf\">Download profile</a><section id=\"projects\"><h2>Projects</h2></section></main>"),
+    file("portrait.jfif", "approved-image", { size: 3_000_000, type: "image/jpeg" }),
+    file("downloads/profile.pdf", "approved-document", { type: "application/pdf" }),
     file("package.json", '{"dependencies":{"react":"19","vite":"7"}}'),
   ]);
 
@@ -102,10 +132,13 @@ test("reads only approved source after privacy exclusions", async () => {
   assert.equal(reads.has("src/ignored.ts"), false);
   assert.equal(reads.get("index.html"), 1);
   assert.equal(assetReads.has("ignored.png"), false);
-  assert.equal(assetReads.get("portrait.png"), 1);
+  assert.equal(assetReads.has("private.pdf"), false);
+  assert.equal(assetReads.get("portrait.jfif"), 1);
+  assert.equal(assetReads.get("downloads/profile.pdf"), 1);
   assert.equal(summary.analysis.kind, "portfolio");
   assert.deepEqual(summary.analysis.indexedFilePaths.sort(), ["index.html", "package.json"]);
-  assert.match(summary.analysis.pages[0].previewHtml ?? "", /src="data:image\/png;base64,/);
+  assert.match(summary.analysis.pages[0].previewHtml ?? "", /src="data:image\/jpeg;base64,/);
+  assert.ok(summary.analysis.assets.some((asset) => asset.fileName === "profile.pdf" && asset.mimeType === "application/pdf"));
 });
 
 async function render(pathname = "/") {
@@ -369,6 +402,8 @@ test("keeps Current Application focused on its consent-first page carousel", asy
   assert.match(source, /This prototype does not edit connected source files yet/);
   assert.match(source, /className="imported-interface-frame"[\s\S]*srcDoc=\{page\.previewHtml\}[\s\S]*sandbox="allow-same-origin"[\s\S]*referrerPolicy="no-referrer"[\s\S]*onLoad=\{connectNavigation\}/);
   assert.match(source, /anchor\.onclick = \(event\)[\s\S]*event\.preventDefault\(\)[\s\S]*navigate\.current\(destination\)/);
+  assert.match(source, /findImportedAsset\(project\.analysis\?\.assets[\s\S]*downloadImportedAsset\(asset\)/);
+  assert.match(source, /link\.download = asset\.fileName/);
   assert.match(source, /This is the imported static interface/);
 });
 

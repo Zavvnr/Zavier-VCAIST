@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEven
 import { AppChrome } from "./components/AppChrome";
 import { ImportProjectDialog } from "./components/ImportProjectDialog";
 import type { ImportedProject } from "@/lib/import-sources";
-import type { NavigationGraph, ProjectPage, ProjectWorkflowStep } from "@/lib/project-analysis";
+import { resolveProjectAssetPath, type NavigationGraph, type ProjectPage, type ProjectWorkflowStep, type SafePreviewAsset } from "@/lib/project-analysis";
 import {
   defaultPreferences,
   modelGroups,
@@ -525,10 +525,15 @@ function ApplicationInterfaceCarousel({
             project={project}
             onNavigate={(destination) => {
               const destinationRoute = normalizeImportedDestination(destination, activePage.route);
-              if (!destinationRoute) return;
-              const targetIndex = pages.findIndex((candidate) => candidate.route.toLowerCase() === destinationRoute.toLowerCase())
-                ?? -1;
-              if (targetIndex >= 0) onPageChange(targetIndex);
+              const targetIndex = destinationRoute
+                ? pages.findIndex((candidate) => candidate.route.toLowerCase() === destinationRoute.toLowerCase())
+                : -1;
+              if (targetIndex >= 0) {
+                onPageChange(targetIndex);
+                return;
+              }
+              const asset = findImportedAsset(project.analysis?.assets ?? [], activePage.sourcePath, destination);
+              if (asset) downloadImportedAsset(asset);
             }}
           />
         </div>
@@ -564,7 +569,7 @@ function ApplicationInterfaceCarousel({
           {isGuidedDemo
             ? "This carousel shows all four pages in the bundled ShopSpring practice application."
             : activePage.previewHtml
-              ? `This is the imported static interface from ${activePage.sourcePath}, rendered in an isolated sandbox. Scripts, forms, external requests, and storage access are disabled.`
+              ? `This is the imported static interface from ${activePage.sourcePath}, rendered in an isolated sandbox. Approved local images and linked downloads work; scripts, forms, external requests, and storage access remain disabled.`
               : `This source-backed interface reconstruction was generated from ${project.analysis?.analyzedFileCount ?? 0} approved files in ${project.name}. This view requires a framework build, so imported code is not executed in the browser.`}
         </p>
       ) : null}
@@ -871,6 +876,29 @@ function normalizeImportedDestination(destination: string, currentRoute: string)
   let path = url.pathname.replace(/\/index\.html?$/i, "/").replace(/\.html?$/i, "").replace(/\/+$/g, "") || "/";
   if (!path.startsWith("/")) path = `/${path}`;
   return url.hash ? `${path === "/" ? "" : path}/${url.hash}`.replace("/#", "/#") : path;
+}
+
+function findImportedAsset(assets: readonly SafePreviewAsset[], sourcePath: string, destination: string) {
+  const resolved = resolveProjectAssetPath(sourcePath, destination);
+  if (!resolved) return null;
+  const exact = assets.find((asset) => asset.path.toLowerCase() === resolved.toLowerCase());
+  if (exact) return exact;
+  const targetName = resolved.replaceAll("\\", "/").split("/").at(-1)?.toLowerCase();
+  const matchingNames = targetName
+    ? assets.filter((asset) => asset.path.replaceAll("\\", "/").split("/").at(-1)?.toLowerCase() === targetName)
+    : [];
+  return matchingNames.length === 1 ? matchingNames[0] : null;
+}
+
+function downloadImportedAsset(asset: SafePreviewAsset) {
+  const link = document.createElement("a");
+  link.href = asset.dataUrl;
+  link.download = asset.fileName;
+  link.rel = "noopener";
+  link.hidden = true;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
 }
 
 function ShopSpringPagePreview({ page, projectName }: { page: ApplicationPage; projectName: string }) {

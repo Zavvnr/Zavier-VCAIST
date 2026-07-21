@@ -1,5 +1,11 @@
 import ignore from "ignore";
-import { analyzeProjectSources, type ProjectAnalysis, type SafePreviewAsset, type SafeSourceDocument } from "./project-analysis.ts";
+import {
+  analyzeProjectSources,
+  referencedProjectAssetPaths,
+  type ProjectAnalysis,
+  type SafePreviewAsset,
+  type SafeSourceDocument,
+} from "./project-analysis.ts";
 
 export type ProjectSource = "demo" | "local" | "google-drive" | "github";
 
@@ -64,15 +70,67 @@ const ignoredSegments = new Set([
   "vendor",
 ]);
 
-const previewAssetMimeTypes: Record<string, string> = {
+const projectAssetMimeTypes: Record<string, string> = {
+  "7z": "application/x-7z-compressed",
   avif: "image/avif",
+  bmp: "image/bmp",
+  csv: "text/csv",
+  doc: "application/msword",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  epub: "application/epub+zip",
   gif: "image/gif",
+  gz: "application/gzip",
   ico: "image/x-icon",
+  jfif: "image/jpeg",
   jpeg: "image/jpeg",
   jpg: "image/jpeg",
+  json: "application/json",
+  m4a: "audio/mp4",
+  md: "text/markdown",
+  mp3: "audio/mpeg",
+  mp4: "video/mp4",
+  odp: "application/vnd.oasis.opendocument.presentation",
+  ods: "application/vnd.oasis.opendocument.spreadsheet",
+  odt: "application/vnd.oasis.opendocument.text",
+  pdf: "application/pdf",
   png: "image/png",
+  ppt: "application/vnd.ms-powerpoint",
+  pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  rar: "application/vnd.rar",
+  rtf: "application/rtf",
+  svg: "image/svg+xml",
+  tar: "application/x-tar",
+  tif: "image/tiff",
+  tiff: "image/tiff",
+  txt: "text/plain",
+  wav: "audio/wav",
+  webm: "video/webm",
   webp: "image/webp",
+  xls: "application/vnd.ms-excel",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  xml: "application/xml",
+  zip: "application/zip",
 };
+
+export const projectAssetLimits = {
+  count: 48,
+  individualBytes: 12_000_000,
+  totalBytes: 32_000_000,
+} as const;
+
+export function projectAssetMimeType(path: string, declaredMimeType = "") {
+  const declared = declaredMimeType.trim().toLowerCase();
+  if (/^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/.test(declared) && declared !== "application/octet-stream") {
+    return declared;
+  }
+  const extension = path.split(".").at(-1)?.toLowerCase() ?? "";
+  return projectAssetMimeTypes[extension] ?? "application/octet-stream";
+}
+
+export function projectAssetFileName(path: string) {
+  return (path.replaceAll("\\", "/").split("/").at(-1) || "download")
+    .replace(/[\u0000-\u001f\u007f]/g, "") || "download";
+}
 
 export function isSourcePath(path: string) {
   const normalized = path.replaceAll("\\", "/");
@@ -167,17 +225,17 @@ export async function summarizeProjectFilesSafely(files: FileList | File[]) {
   }
 
   const approvedPaths = new Set(evaluation.approvedPaths);
+  const referencedAssets = new Set(referencedProjectAssetPaths(documents, evaluation.approvedPaths));
   const assets: SafePreviewAsset[] = [];
-  let assetBudget = 6_000_000;
+  let assetBudget = projectAssetLimits.totalBytes;
   for (const file of projectFiles) {
-    if (assets.length >= 24 || assetBudget <= 0) break;
+    if (assets.length >= projectAssetLimits.count || assetBudget <= 0) break;
     const path = projectRelativePath(file.webkitRelativePath || file.name);
-    const extension = path.split(".").at(-1)?.toLowerCase() ?? "";
-    const mimeType = previewAssetMimeTypes[extension];
-    if (!mimeType || !approvedPaths.has(path) || file.size > 2_000_000 || file.size > assetBudget) continue;
+    if (!approvedPaths.has(path) || !referencedAssets.has(path) || file.size > projectAssetLimits.individualBytes || file.size > assetBudget) continue;
+    const mimeType = projectAssetMimeType(path, file.type);
     const bytes = new Uint8Array(await file.arrayBuffer());
     assetBudget -= bytes.byteLength;
-    assets.push({ path, dataUrl: `data:${mimeType};base64,${bytesToBase64(bytes)}` });
+    assets.push({ path, mimeType, fileName: projectAssetFileName(path), dataUrl: `data:${mimeType};base64,${bytesToBase64(bytes)}` });
   }
 
   const name = projectNameFromFiles(projectFiles);

@@ -6,6 +6,9 @@ import {
   createGitignorePolicy,
   evaluateProjectPaths,
   parseGitHubRepositoryUrl,
+  projectAssetFileName,
+  projectAssetLimits,
+  projectAssetMimeType,
   projectNameFromFiles,
   sourceAnalysisPriority,
   summarizeProjectFilesSafely,
@@ -13,7 +16,7 @@ import {
   type ImportedProject,
   type ProjectSource,
 } from "@/lib/import-sources";
-import { analyzeProjectSources, type SafePreviewAsset, type SafeSourceDocument } from "@/lib/project-analysis";
+import { analyzeProjectSources, referencedProjectAssetPaths, type SafePreviewAsset, type SafeSourceDocument } from "@/lib/project-analysis";
 
 type ImportSource = Exclude<ProjectSource, "demo">;
 
@@ -176,6 +179,7 @@ export function ImportProjectDialog({
         repository.repo,
         blobEntries,
         evaluation.approvedPaths,
+        documents,
         headers,
       );
 
@@ -409,37 +413,30 @@ async function loadGitHubPreviewAssets(
   repository: string,
   entries: Array<{ path: string; sha?: string; size?: number }>,
   approvedPaths: readonly string[],
+  documents: readonly SafeSourceDocument[],
   headers: Record<string, string>,
 ) {
   const approved = new Set(approvedPaths);
+  const referenced = new Set(referencedProjectAssetPaths(documents, approvedPaths));
   const candidates = entries
-    .filter((entry) => approved.has(entry.path) && entry.sha && previewAssetMimeType(entry.path) && (entry.size ?? 0) <= 2_000_000)
-    .slice(0, 24);
+    .filter((entry) => approved.has(entry.path) && referenced.has(entry.path) && entry.sha && (entry.size ?? 0) <= projectAssetLimits.individualBytes)
+    .slice(0, projectAssetLimits.count);
   const assets: SafePreviewAsset[] = [];
-  let assetBudget = 6_000_000;
+  let assetBudget = projectAssetLimits.totalBytes;
   for (const entry of candidates) {
-    if (!entry.sha || assetBudget <= 0 || (entry.size ?? 0) > assetBudget) break;
+    if (!entry.sha || assetBudget <= 0 || (entry.size ?? 0) > assetBudget) continue;
     const response = await fetch(`https://api.github.com/repos/${owner}/${repository}/git/blobs/${encodeURIComponent(entry.sha)}`, { headers });
     if (!response.ok) continue;
     const data = (await response.json()) as { content?: string; encoding?: string };
-    const mimeType = previewAssetMimeType(entry.path);
-    if (!mimeType || data.encoding !== "base64" || typeof data.content !== "string") continue;
+    const mimeType = projectAssetMimeType(entry.path);
+    if (data.encoding !== "base64" || typeof data.content !== "string") continue;
     const base64 = data.content.replace(/\s/g, "");
-    assetBudget -= Math.ceil(base64.length * 0.75);
-    assets.push({ path: entry.path, dataUrl: `data:${mimeType};base64,${base64}` });
+    const byteLength = Math.ceil(base64.length * 0.75);
+    if (byteLength > projectAssetLimits.individualBytes || byteLength > assetBudget) continue;
+    assetBudget -= byteLength;
+    assets.push({ path: entry.path, mimeType, fileName: projectAssetFileName(entry.path), dataUrl: `data:${mimeType};base64,${base64}` });
   }
   return assets;
-}
-
-function previewAssetMimeType(path: string) {
-  const extension = path.split(".").at(-1)?.toLowerCase();
-  return extension === "png" ? "image/png"
-    : extension === "jpg" || extension === "jpeg" ? "image/jpeg"
-      : extension === "gif" ? "image/gif"
-        : extension === "webp" ? "image/webp"
-          : extension === "avif" ? "image/avif"
-            : extension === "ico" ? "image/x-icon"
-              : null;
 }
 
 function loadExternalScript(src: string, id: string) {
@@ -549,7 +546,7 @@ async function chooseGoogleDriveFolder() {
 async function countGoogleDriveSourceFiles(rootFolderId: string, projectName: string, accessToken: string) {
   const folderMimeType = "application/vnd.google-apps.folder";
   const pendingFolders = [{ id: rootFolderId, path: "" }];
-  const projectFiles: Array<{ id: string; path: string; size: number }> = [];
+  const projectFiles: Array<{ id: string; path: string; size: number; mimeType: string }> = [];
   let inspectedItems = 0;
 
   while (pendingFolders.length && inspectedItems < 2000) {
@@ -580,7 +577,7 @@ async function countGoogleDriveSourceFiles(rootFolderId: string, projectName: st
         inspectedItems += 1;
         const path = folder.path ? `${folder.path}/${item.name}` : item.name;
         if (item.mimeType === folderMimeType) pendingFolders.push({ id: item.id, path });
-        else projectFiles.push({ id: item.id, path, size: Number(item.size ?? 0) });
+        else projectFiles.push({ id: item.id, path, size: Number(item.size ?? 0), mimeType: item.mimeType });
         if (inspectedItems >= 2000) break;
       }
       pageToken = data.nextPageToken ?? "";
@@ -622,18 +619,20 @@ async function countGoogleDriveSourceFiles(rootFolderId: string, projectName: st
   }
   const assets: SafePreviewAsset[] = [];
   const approvedAssetPaths = new Set(evaluation.approvedPaths);
-  let assetBudget = 6_000_000;
+  const referencedAssets = new Set(referencedProjectAssetPaths(documents, evaluation.approvedPaths));
+  let assetBudget = projectAssetLimits.totalBytes;
   for (const file of projectFiles) {
-    const mimeType = previewAssetMimeType(file.path);
-    if (assets.length >= 24 || assetBudget <= 0) break;
-    if (!mimeType || !approvedAssetPaths.has(file.path) || file.size > 2_000_000 || file.size > assetBudget) continue;
+    if (assets.length >= projectAssetLimits.count || assetBudget <= 0) break;
+    if (!approvedAssetPaths.has(file.path) || !referencedAssets.has(file.path) || file.size > projectAssetLimits.individualBytes || file.size > assetBudget) continue;
     const response = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(file.id)}?alt=media`, {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
     if (!response.ok) continue;
     const bytes = new Uint8Array(await response.arrayBuffer());
+    if (bytes.byteLength > projectAssetLimits.individualBytes || bytes.byteLength > assetBudget) continue;
+    const mimeType = projectAssetMimeType(file.path, file.mimeType);
     assetBudget -= bytes.byteLength;
-    assets.push({ path: file.path, dataUrl: `data:${mimeType};base64,${bytesToBase64(bytes)}` });
+    assets.push({ path: file.path, mimeType, fileName: projectAssetFileName(file.path), dataUrl: `data:${mimeType};base64,${bytesToBase64(bytes)}` });
   }
   return {
     fileCount: evaluation.sourcePaths.length,

@@ -6,6 +6,8 @@ export type SafeSourceDocument = {
 export type SafePreviewAsset = {
   path: string;
   dataUrl: string;
+  mimeType: string;
+  fileName: string;
 };
 
 export type ProjectKind = "portfolio" | "commerce" | "blog" | "dashboard" | "api" | "application";
@@ -118,6 +120,7 @@ export type ProjectAnalysis = {
   findings: readonly ProjectSourceFinding[];
   overview: ApplicationOverview;
   navigationGraph: NavigationGraph;
+  assets: readonly SafePreviewAsset[];
   analyzedFileCount: number;
   indexedFilePaths: readonly string[];
 };
@@ -159,9 +162,70 @@ export function analyzeProjectSources({ name, sourcePaths, documents, assets = [
     findings,
     overview,
     navigationGraph,
+    assets,
     analyzedFileCount: normalizedDocuments.length,
     indexedFilePaths: [...sourcePaths].sort(),
   };
+}
+
+export function referencedProjectAssetPaths(documents: readonly SafeSourceDocument[], approvedPaths: readonly string[]) {
+  const approvedByPath = new Map(approvedPaths.map((path) => [normalizePath(path).toLowerCase(), normalizePath(path)]));
+  const approvedByName = new Map<string, string[]>();
+  for (const path of approvedPaths) {
+    const normalized = normalizePath(path);
+    const name = fileName(normalized).toLowerCase();
+    approvedByName.set(name, [...(approvedByName.get(name) ?? []), normalized]);
+  }
+
+  const selected = new Set<string>();
+  for (const document of documents) {
+    const references = collectLocalReferences(document);
+    for (const reference of references) {
+      const resolved = resolveProjectAssetPath(document.path, reference);
+      if (!resolved) continue;
+      const exact = approvedByPath.get(resolved.toLowerCase());
+      if (exact) {
+        selected.add(exact);
+        continue;
+      }
+      const matchingNames = approvedByName.get(fileName(resolved).toLowerCase());
+      if (matchingNames?.length === 1) selected.add(matchingNames[0]);
+    }
+  }
+  return [...selected];
+}
+
+export function resolveProjectAssetPath(basePath: string, value: string) {
+  const trimmed = value.trim().replaceAll("\\", "/");
+  if (!trimmed || /^(?:data:|https?:|blob:|mailto:|tel:|javascript:|#)/i.test(trimmed)) return null;
+  try {
+    const resolved = new URL(trimmed, `https://imported.local/${normalizePath(basePath)}`).pathname.replace(/^\/+/, "");
+    return normalizePath(decodeURIComponent(resolved));
+  } catch {
+    return null;
+  }
+}
+
+function collectLocalReferences(document: SafeSourceDocument) {
+  const references = new Set<string>();
+  const attributePattern = /\b(?:src|poster|href)\s*=\s*(?:(["'])(.*?)\1|([^\s>]+))/gi;
+  for (const match of document.content.matchAll(attributePattern)) {
+    const value = match[2] ?? match[3];
+    if (value) references.add(value);
+  }
+  const srcsetPattern = /\bsrcset\s*=\s*(?:(["'])(.*?)\1|([^\s>]+))/gi;
+  for (const match of document.content.matchAll(srcsetPattern)) {
+    const value = match[2] ?? match[3] ?? "";
+    for (const candidate of value.split(",")) {
+      const reference = candidate.trim().split(/\s+/)[0];
+      if (reference) references.add(reference);
+    }
+  }
+  const cssPattern = /url\(\s*(["']?)([^"')]+)\1\s*\)/gi;
+  for (const match of document.content.matchAll(cssPattern)) {
+    if (match[2]) references.add(match[2].trim());
+  }
+  return references;
 }
 
 function detectProjectKind(name: string, corpus: string): ProjectKind {
@@ -389,11 +453,19 @@ function createSandboxedStaticHtml(html: string, styles: string, htmlPath: strin
     const asset = resolvePreviewAsset(htmlPath, value, assetMap);
     return asset ? ` ${attribute}=${quote}${asset}${quote}` : match;
   });
+  safeHtml = safeHtml.replace(/\ssrcset\s*=\s*(["'])([^"']+)\1/gi, (match, quote: string, value: string) => {
+    const candidates = value.split(",").map((candidate) => {
+      const [reference, ...descriptor] = candidate.trim().split(/\s+/);
+      const asset = resolvePreviewAsset(htmlPath, reference, assetMap);
+      return asset ? `${asset}${descriptor.length ? ` ${descriptor.join(" ")}` : ""}` : candidate.trim();
+    });
+    return candidates.some((candidate) => candidate.startsWith("data:")) ? ` srcset=${quote}${candidates.join(", ")}${quote}` : match;
+  });
   const headContent = `<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:; media-src data:; form-action 'none'; base-uri 'none'; navigate-to 'none'"><style>html,body{margin:0;min-height:100%;overflow:auto}${safeStyles}</style>`;
   if (/<head\b[^>]*>/i.test(safeHtml)) safeHtml = safeHtml.replace(/<head\b[^>]*>/i, (head) => `${head}${headContent}`);
   else if (/<html\b[^>]*>/i.test(safeHtml)) safeHtml = safeHtml.replace(/<html\b[^>]*>/i, (root) => `${root}<head>${headContent}</head>`);
   else safeHtml = `<!doctype html><html><head>${headContent}</head><body>${safeHtml}</body></html>`;
-  return safeHtml.slice(0, 650_000);
+  return safeHtml;
 }
 
 function inlineCssAssets(css: string, cssPath: string, assetMap: ReadonlyMap<string, string>) {
@@ -404,13 +476,13 @@ function inlineCssAssets(css: string, cssPath: string, assetMap: ReadonlyMap<str
 }
 
 function resolvePreviewAsset(basePath: string, value: string, assetMap: ReadonlyMap<string, string>) {
-  if (!value || /^(?:data:|https?:|blob:|#)/i.test(value)) return null;
-  try {
-    const resolved = new URL(value, `https://imported.local/${normalizePath(basePath)}`).pathname.replace(/^\/+/, "");
-    return assetMap.get(normalizePath(decodeURIComponent(resolved)).toLowerCase()) ?? null;
-  } catch {
-    return null;
-  }
+  const resolved = resolveProjectAssetPath(basePath, value);
+  if (!resolved) return null;
+  const exact = assetMap.get(resolved.toLowerCase());
+  if (exact) return exact;
+  const targetName = fileName(resolved).toLowerCase();
+  const matches = [...assetMap.entries()].filter(([path]) => fileName(path).toLowerCase() === targetName);
+  return matches.length === 1 ? matches[0][1] : null;
 }
 
 function buildApplicationOverview(
