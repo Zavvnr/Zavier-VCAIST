@@ -48,7 +48,7 @@ export function Onboarding() {
         <nav className="welcome-links" aria-label="Welcome navigation">
           <a href="#how-it-works">How it works</a>
           <a href="#what-it-does">What it does</a>
-          <Link className="button welcome-nav-button" href="/demo">Open demo <span aria-hidden="true">→</span></Link>
+          <Link className="button welcome-nav-button" href="/demo" prefetch={false}>Open demo <span aria-hidden="true">→</span></Link>
         </nav>
       </header>
 
@@ -62,8 +62,8 @@ export function Onboarding() {
               and early warnings you can actually understand.
             </p>
             <div className="welcome-actions">
-              <Link className="button dark welcome-primary" href="/demo">Take a demo <span aria-hidden="true">→</span></Link>
-              <Link className="button welcome-secondary" href="/workspace">Try with your own project <span aria-hidden="true">→</span></Link>
+              <Link className="button dark welcome-primary" href="/demo" prefetch={false}>Take a demo <span aria-hidden="true">→</span></Link>
+              <Link className="button welcome-secondary" href="/workspace" prefetch={false}>Try with your own project <span aria-hidden="true">→</span></Link>
               <a className="welcome-text-link" href="#how-it-works">Show me how it works <span aria-hidden="true">↓</span></a>
             </div>
             <div className="welcome-reassurance">
@@ -153,7 +153,7 @@ export function Onboarding() {
                 {activeStep < tutorialSteps.length - 1 ? (
                   <button className="next" onClick={() => setActiveStep(activeStep + 1)}>Next step →</button>
                 ) : (
-                  <Link className="next" href="/demo">Start demo →</Link>
+                  <Link className="next" href="/demo" prefetch={false}>Start demo →</Link>
                 )}
               </div>
             </div>
@@ -181,7 +181,7 @@ export function Onboarding() {
               Use a safe financial demo to change a price, watch revenue move, and discover why
               a zero-item order accidentally creates negative money.
             </p>
-            <Link className="button demo-button" href="/demo">Launch the financial demo <span aria-hidden="true">→</span></Link>
+            <Link className="button demo-button" href="/demo" prefetch={false}>Launch the financial demo <span aria-hidden="true">→</span></Link>
             <small>No setup required · About 3 minutes · Nothing can break</small>
           </div>
           <div className="demo-lesson-card">
@@ -197,7 +197,7 @@ export function Onboarding() {
       <footer className="welcome-footer">
         <Link className="brand" href="/" aria-label="VCAIST home"><span className="brand-mark" aria-hidden="true">V</span><span>VCAIST</span></Link>
         <p>No jargon. No surprise changes. You stay in control.</p>
-        <div><Link href="/about">About</Link><Link href="/help">Help center</Link><Link href="/settings">Settings</Link><Link href="/demo">Demo</Link></div>
+        <div><Link href="/about">About</Link><Link href="/help">Help center</Link><Link href="/settings" prefetch={false}>Settings</Link><Link href="/demo" prefetch={false}>Demo</Link></div>
       </footer>
     </div>
   );

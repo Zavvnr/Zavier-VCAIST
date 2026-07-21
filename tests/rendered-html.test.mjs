@@ -283,6 +283,38 @@ test("routes About back to the starting tutorial page", async () => {
   assert.match(css, /\.mobile-nav \{[\s\S]*?grid-template-columns: repeat\(4, 1fr\);/);
 });
 
+test("enforces authenticated, user-scoped access to private workspace resources", async () => {
+  const [layout, proxy, workspace, demo, settings, modelsRoute, chatRoute, graphRoute, chrome, envExample] = await Promise.all([
+    readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../proxy.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/workspace/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/demo/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/settings/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/ai/models/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/ai/chat/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/ai/navigation-graph/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/components/AppChrome.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../.env.example", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(layout, /<ClerkProvider[\s\S]*signInUrl="\/sign-in"[\s\S]*signUpUrl="\/sign-up"/);
+  assert.match(proxy, /clerkMiddleware\(\)/);
+  for (const page of [workspace, demo, settings]) assert.match(page, /await auth\.protect\(\)/);
+  for (const route of [modelsRoute, chatRoute, graphRoute]) {
+    assert.match(route, /const \{ userId \} = await auth\(\)/);
+    assert.match(route, /if \(!userId\)/);
+    assert.match(route, /Cache-Control": "private, no-store"/);
+  }
+  assert.match(chatRoute, /checkAiRateLimit\(`user:\$\{userId\}`\)/);
+  assert.match(graphRoute, /checkAiRateLimit\(`user:\$\{userId\}`\)/);
+  assert.doesNotMatch(`${chatRoute}\n${graphRoute}`, /clientIdentifier/);
+  assert.match(chrome, /<UserButton/);
+  assert.match(chrome, /Private workspace/);
+  assert.match(envExample, /NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=\s*$/m);
+  assert.match(envExample, /CLERK_SECRET_KEY=\s*$/m);
+  assert.doesNotMatch(envExample, /CLERK_SECRET_KEY=\S+/);
+});
+
 test("offers the complete supported model and appearance catalogs", () => {
   assert.deepEqual(modelOptions.map((model) => model.id), [
     "gpt-5.6-luna",

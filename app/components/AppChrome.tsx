@@ -1,3 +1,6 @@
+"use client";
+
+import { UserButton, useUser } from "@clerk/nextjs";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
@@ -28,6 +31,9 @@ export function AppChrome({
   projectConnected?: boolean;
   workspaceHref?: string;
 }) {
+  const { isLoaded, user } = useUser();
+  const accountName = user?.fullName || user?.firstName || user?.primaryEmailAddress?.emailAddress || "My workspace";
+
   return (
     <div className="app-shell">
       <aside className="sidebar" aria-label="Main navigation">
@@ -55,6 +61,7 @@ export function AppChrome({
             <Link
               className={active === item.id ? "side-link active" : "side-link"}
               href={item.id === "workspace" ? workspaceHref : item.href}
+              prefetch={item.id === "workspace" || item.id === "settings" ? false : undefined}
               key={item.id}
               aria-current={active === item.id ? "page" : undefined}
             >
@@ -73,12 +80,24 @@ export function AppChrome({
         </div>
 
         <div className="profile-row">
-          <span className="profile-avatar">ZA</span>
-          <span>
-            <strong>My workspace</strong>
-            <small>Personal plan</small>
-          </span>
-          <span aria-hidden="true">•••</span>
+          {isLoaded && user ? (
+            <>
+              <UserButton
+                signInUrl="/sign-in"
+                appearance={{ elements: { avatarBox: { width: "38px", height: "38px" } } }}
+              />
+              <span>
+                <strong>{accountName}</strong>
+                <small>Private workspace</small>
+              </span>
+              <span className="profile-private-mark" aria-label="Authenticated private session">✓</span>
+            </>
+          ) : (
+            <Link className="profile-sign-in" href="/sign-in">
+              <span className="profile-avatar" aria-hidden="true">→</span>
+              <span><strong>Sign in</strong><small>Open your private workspace</small></span>
+            </Link>
+          )}
         </div>
       </aside>
 
@@ -89,6 +108,7 @@ export function AppChrome({
           <Link
             className={active === item.id ? "mobile-link active" : "mobile-link"}
             href={item.id === "workspace" ? workspaceHref : item.href}
+            prefetch={item.id === "workspace" || item.id === "settings" ? false : undefined}
             key={item.id}
             aria-current={active === item.id ? "page" : undefined}
           >

@@ -1,3 +1,4 @@
+import { auth } from "@clerk/nextjs/server";
 import type { Metadata } from "next";
 import { AppChrome } from "../components/AppChrome";
 import { SettingsPanel } from "./SettingsPanel";
@@ -7,7 +8,8 @@ export const metadata: Metadata = {
   description: "Manage VCAIST model, scanning, and explanation preferences.",
 };
 
-export default function SettingsPage() {
+export default async function SettingsPage() {
+  await auth.protect();
   return (
     <AppChrome active="settings">
       <div className="simple-header">

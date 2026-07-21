@@ -49,7 +49,7 @@ If you do not use NVM, install Node.js 24.12 directly, then run the same two npm
 npm test
 ```
 
-No API key or database is required for this prototype. The active model selector groups OpenAI, Anthropic, Google, Moonshot AI, and Alibaba Cloud options into Frontier, Workhorse, and Efficient tiers. Claude Sonnet 5 is the fresh-install default, while GPT-5.6 Terra, Gemini 3.1 Pro, Kimi K2.7 Code, Qwen3.7 Plus, Gemini 3.5 Flash, and GPT-5.4 provide workhorse alternatives. Compact dropdown prices use one consistent `USD input / output per 1M tokens` format. The current product behavior still uses the deterministic ShopSpring demo fixture so the core loop is reliable and testable.
+Authentication is required for `/workspace`, `/demo`, `/settings`, and every AI endpoint. Create a Clerk application, copy `.env.example` to `.env.local`, and set `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` plus `CLERK_SECRET_KEY`; real values must never be committed. The public tutorial, About redirect, Help center, sign-in, and sign-up routes remain public. AI features additionally require at least one configured provider key. The cost-conscious model selector supports OpenAI, Anthropic, Google, Moonshot AI, and Alibaba Cloud, with GPT-5.6 Luna as the default and compact prices in `USD input / output per 1M tokens` format.
 
 ### Optional Google Drive connection
 
@@ -61,11 +61,14 @@ The hosted application targets Vercel's native Next.js runtime. Connect the GitH
 
 Configure these server-side Production values as encrypted Vercel environment variables; never commit or expose their values:
 
+- `CLERK_SECRET_KEY`
 - `OPENAI_API_KEY`
 - `ANTHROPIC_API_KEY`
 - `GEMINI_API_KEY`
 - `MOONSHOT_API_KEY`
 - `DASHSCOPE_API_KEY`
+
+Add `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` as the Clerk browser identifier, then set the four Clerk route variables from `.env.example`. In the Clerk dashboard, add the Vercel Preview and Production domains as allowed origins/redirects. Workspace routes and AI APIs fail closed when a valid Clerk session is absent.
 
 Google Drive additionally needs `NEXT_PUBLIC_GOOGLE_DRIVE_APP_ID`, `NEXT_PUBLIC_GOOGLE_DRIVE_API_KEY`, and `NEXT_PUBLIC_GOOGLE_DRIVE_CLIENT_ID`. These three identifiers are intentionally available to browser code and are not server secrets. Add the deployed Vercel origin to the Google OAuth client's authorized JavaScript origins before testing Drive import. Environment-variable changes apply on the next Vercel deployment.
 
@@ -82,6 +85,7 @@ The interface uses a desktop sidebar, fluid content grids, touch-friendly contro
 
 ### User-facing product
 
+- **Private accounts and sessions** — Clerk provides sign-in, sign-up, managed secure cookies, account switching, and sign-out. Workspace, demo, settings, model availability, navigation generation, and Change Assistant requests each enforce authentication on the server rather than relying on hidden client controls.
 - **Guided welcome page** — explains what VCAIST is for, walks through its four-step safety loop, and offers both a demo and a direct path into the user's own project.
 - **Direct workspace** — skips the tutorial and demo, opens the project-source chooser immediately, and accepts a local folder, Google Drive folder, or public GitHub repository.
 - **Workspace views** — Overview, Current Application, Compare, App map, and Safety tests each begin with a plain-language explanation of the page and three useful actions. Overview contains the program summary, complete feature index, and end-to-end example story.
@@ -97,6 +101,8 @@ The interface uses a desktop sidebar, fluid content grids, touch-friendly contro
 
 ### Implementation
 
+- `proxy.ts` — initializes Clerk request authentication for application and API routes
+- `app/sign-in/` and `app/sign-up/` — responsive account entry routes
 - `app/Onboarding.tsx` — interactive tutorial and first-run explanation at `/`
 - `app/Dashboard.tsx` — interactive workspace and all five workspace views, including the application carousel and permission-gated change assistant
 - `app/demo/page.tsx` — financial demo route at `/demo`
@@ -111,7 +117,7 @@ The interface uses a desktop sidebar, fluid content grids, touch-friendly contro
 
 ### Current boundaries
 
-Folder and repository imports are session-only: local files stay in the browser, GitHub imports read the public repository tree, and Google Drive uses an in-memory read-only access token. The interface clearly distinguishes completed source-file indexing from project-specific AI analysis. Current Application and Compare use guided four-page commerce templates labeled with the selected project names; they do not yet render the imported applications themselves. Security architecture findings still use the bundled ShopSpring fixture, and only the pricing boundary test executes real fixture code. No background AI job continues after indexing finishes. The change assistant demonstrates the complete consent flow and records sandbox approval locally, but it does not edit connected source files. AI-powered repository analysis, project-specific rendering and security testing, durable project storage, private GitHub access, patch generation, and approval-based publishing are the next backend milestones.
+Folder and repository imports remain session-only inside the authenticated browser workspace: local files stay in browser memory, GitHub imports read the public repository tree, and Google Drive uses an in-memory read-only access token. VCAIST does not currently maintain a shared project database, so there is no cross-account project collection to enumerate or query. Current Application renders approved static interfaces when available and uses a source-backed structural reconstruction for framework pages. The Change Assistant creates an Original/Proposed visual sandbox after explicit approval but does not edit connected source files. Durable user-scoped project storage, private GitHub access, patch generation, and approval-based publishing remain future backend milestones; any future persistence must store the Clerk user ID as the owner and enforce that ownership again in the data-access layer.
 
 ## What comes After
 

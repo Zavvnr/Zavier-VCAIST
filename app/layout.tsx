@@ -1,3 +1,4 @@
+import { ClerkProvider } from "@clerk/nextjs";
 import type { Metadata, Viewport } from "next";
 import { ThemeBoot } from "./components/ThemeBoot";
 import "./globals.css";
@@ -35,8 +36,16 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" data-theme="midnight-clay" suppressHydrationWarning>
-      <body><ThemeBoot />{children}</body>
-    </html>
+    <ClerkProvider
+      signInUrl="/sign-in"
+      signUpUrl="/sign-up"
+      signInFallbackRedirectUrl="/workspace"
+      signUpFallbackRedirectUrl="/workspace"
+      afterSignOutUrl="/"
+    >
+      <html lang="en" data-theme="midnight-clay" suppressHydrationWarning>
+        <body><ThemeBoot />{children}</body>
+      </html>
+    </ClerkProvider>
   );
 }

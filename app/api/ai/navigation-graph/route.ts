@@ -1,3 +1,4 @@
+import { auth } from "@clerk/nextjs/server";
 import { ModelUnavailableError } from "@/lib/ai/provider";
 import { checkAiRateLimit } from "@/lib/ai/rate-limit";
 import { generateModelReply } from "@/lib/ai/router";
@@ -15,7 +16,9 @@ type GraphBody = {
 };
 
 export async function POST(request: Request) {
-  if (!checkAiRateLimit(clientIdentifier(request))) {
+  const { userId } = await auth();
+  if (!userId) return jsonError("UNAUTHORIZED", "Sign in to generate an application map.", 401);
+  if (!checkAiRateLimit(`user:${userId}`)) {
     return jsonError("RATE_LIMITED", "Too many AI requests. Please wait a minute and try again.", 429);
   }
 
@@ -50,7 +53,7 @@ export async function POST(request: Request) {
     });
     const graph = parseModelGraph(result.output, sourceGraph);
     if (!graph) return jsonError("MODEL_OUTPUT_INVALID", "The selected model did not return a usable navigation graph.", 502);
-    return Response.json({ model: result.model, graph }, { headers: { "Cache-Control": "no-store" } });
+    return Response.json({ model: result.model, graph }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     if (error instanceof ModelUnavailableError) return jsonError("MODEL_UNAVAILABLE", unavailableMessage, 503);
     return jsonError("MODEL_UNAVAILABLE", unavailableMessage, 503);
@@ -140,12 +143,6 @@ function safeText(value: unknown, maximumLength: number) {
   return text && text.length <= maximumLength ? text : null;
 }
 
-function clientIdentifier(request: Request) {
-  return request.headers.get("cf-connecting-ip")
-    ?? request.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
-    ?? "anonymous";
-}
-
 function jsonError(code: string, message: string, status: number) {
-  return Response.json({ code, message }, { status, headers: { "Cache-Control": "no-store" } });
+  return Response.json({ code, message }, { status, headers: { "Cache-Control": "private, no-store" } });
 }
