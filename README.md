@@ -6,7 +6,7 @@ The current platform demonstrates a safe application-understanding loop with a s
 
 The project is accessible at: https://vcaist-platform.vercel.app/
 
-Demo video: 
+Demo video: https://youtu.be/jElnlDrm4Kc
 
 ## Acknowledgement
 
