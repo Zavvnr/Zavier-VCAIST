@@ -3,6 +3,11 @@ export type SafeSourceDocument = {
   content: string;
 };
 
+export type SafePreviewAsset = {
+  path: string;
+  dataUrl: string;
+};
+
 export type ProjectKind = "portfolio" | "commerce" | "blog" | "dashboard" | "api" | "application";
 
 export type ProjectPage = {
@@ -121,12 +126,13 @@ type AnalysisInput = {
   name: string;
   sourcePaths: readonly string[];
   documents: readonly SafeSourceDocument[];
+  assets?: readonly SafePreviewAsset[];
 };
 
 const routeExtensions = "(?:js|jsx|ts|tsx|vue|svelte|astro|html)";
 const secretAssignmentPattern = /\b(api[_-]?key|client[_-]?secret|access[_-]?token|auth[_-]?token|password)\b\s*[:=]\s*["'`]((?!process\.env|import\.meta\.env)[^"'`\n]{8,})["'`]/i;
 
-export function analyzeProjectSources({ name, sourcePaths, documents }: AnalysisInput): ProjectAnalysis {
+export function analyzeProjectSources({ name, sourcePaths, documents, assets = [] }: AnalysisInput): ProjectAnalysis {
   const normalizedDocuments = documents
     .map((document) => ({ path: normalizePath(document.path), content: document.content }))
     .filter((document) => document.path && document.content.trim());
@@ -134,7 +140,7 @@ export function analyzeProjectSources({ name, sourcePaths, documents }: Analysis
   const kind = detectProjectKind(name, corpus);
   const framework = detectFramework(sourcePaths, normalizedDocuments);
   const technologies = detectTechnologies(sourcePaths, corpus, framework);
-  const pages = attachSandboxedPreviews(detectPages(normalizedDocuments, kind), normalizedDocuments);
+  const pages = attachSandboxedPreviews(detectPages(normalizedDocuments, kind), normalizedDocuments, assets);
   const workflow = buildWorkflow(pages, normalizedDocuments);
   const { entities, relationships } = buildEntityModel(kind);
   const findings = scanSourceFindings(normalizedDocuments, sourcePaths);
@@ -344,10 +350,11 @@ function buildWorkflow(pages: readonly ProjectPage[], documents: readonly SafeSo
   }));
 }
 
-function attachSandboxedPreviews(pages: readonly ProjectPage[], documents: readonly SafeSourceDocument[]) {
+function attachSandboxedPreviews(pages: readonly ProjectPage[], documents: readonly SafeSourceDocument[], assets: readonly SafePreviewAsset[]) {
+  const assetMap = new Map(assets.map((asset) => [normalizePath(asset.path).toLowerCase(), asset.dataUrl]));
   const styles = documents
     .filter((document) => /\.(css|scss)$/i.test(document.path))
-    .map((document) => document.content)
+    .map((document) => inlineCssAssets(document.content, document.path, assetMap))
     .join("\n")
     .slice(0, 300_000);
   const previewByPath = new Map<string, string>();
@@ -358,14 +365,14 @@ function attachSandboxedPreviews(pages: readonly ProjectPage[], documents: reado
     if (!previewHtml) {
       const document = documents.find((candidate) => candidate.path === page.sourcePath);
       if (!document) return page;
-      previewHtml = createSandboxedStaticHtml(document.content, styles);
+      previewHtml = createSandboxedStaticHtml(document.content, styles, document.path, assetMap);
       previewByPath.set(page.sourcePath, previewHtml);
     }
     return { ...page, previewHtml };
   });
 }
 
-function createSandboxedStaticHtml(html: string, styles: string) {
+function createSandboxedStaticHtml(html: string, styles: string, htmlPath: string, assetMap: ReadonlyMap<string, string>) {
   const safeStyles = styles
     .replace(/@import\s+[^;]+;/gi, "")
     .replace(/<\/style/gi, "<\\/style");
@@ -378,11 +385,32 @@ function createSandboxedStaticHtml(html: string, styles: string) {
     .replace(/\son[a-z]+\s*=\s*(?:["'][\s\S]*?["']|[^\s>]+)/gi, "")
     .replace(/\s(?:href|src)\s*=\s*["']\s*javascript:[\s\S]*?["']/gi, "")
     .replace(/\saction\s*=\s*(?:["'][\s\S]*?["']|[^\s>]+)/gi, "");
+  safeHtml = safeHtml.replace(/\s(src|poster)\s*=\s*(["'])([^"']+)\2/gi, (match, attribute: string, quote: string, value: string) => {
+    const asset = resolvePreviewAsset(htmlPath, value, assetMap);
+    return asset ? ` ${attribute}=${quote}${asset}${quote}` : match;
+  });
   const headContent = `<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:; media-src data:; form-action 'none'; base-uri 'none'; navigate-to 'none'"><style>html,body{margin:0;min-height:100%;overflow:auto}${safeStyles}</style>`;
   if (/<head\b[^>]*>/i.test(safeHtml)) safeHtml = safeHtml.replace(/<head\b[^>]*>/i, (head) => `${head}${headContent}`);
   else if (/<html\b[^>]*>/i.test(safeHtml)) safeHtml = safeHtml.replace(/<html\b[^>]*>/i, (root) => `${root}<head>${headContent}</head>`);
   else safeHtml = `<!doctype html><html><head>${headContent}</head><body>${safeHtml}</body></html>`;
   return safeHtml.slice(0, 650_000);
+}
+
+function inlineCssAssets(css: string, cssPath: string, assetMap: ReadonlyMap<string, string>) {
+  return css.replace(/url\(\s*(["']?)([^"')]+)\1\s*\)/gi, (match, _quote: string, value: string) => {
+    const asset = resolvePreviewAsset(cssPath, value.trim(), assetMap);
+    return asset ? `url("${asset}")` : match;
+  });
+}
+
+function resolvePreviewAsset(basePath: string, value: string, assetMap: ReadonlyMap<string, string>) {
+  if (!value || /^(?:data:|https?:|blob:|#)/i.test(value)) return null;
+  try {
+    const resolved = new URL(value, `https://imported.local/${normalizePath(basePath)}`).pathname.replace(/^\/+/, "");
+    return assetMap.get(normalizePath(decodeURIComponent(resolved)).toLowerCase()) ?? null;
+  } catch {
+    return null;
+  }
 }
 
 function buildApplicationOverview(

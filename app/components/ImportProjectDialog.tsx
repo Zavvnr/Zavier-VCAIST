@@ -13,7 +13,7 @@ import {
   type ImportedProject,
   type ProjectSource,
 } from "@/lib/import-sources";
-import { analyzeProjectSources, type SafeSourceDocument } from "@/lib/project-analysis";
+import { analyzeProjectSources, type SafePreviewAsset, type SafeSourceDocument } from "@/lib/project-analysis";
 
 type ImportSource = Exclude<ProjectSource, "demo">;
 
@@ -171,6 +171,13 @@ export function ImportProjectDialog({
         evaluation.sourcePaths,
         headers,
       );
+      const assets = await loadGitHubPreviewAssets(
+        repository.owner,
+        repository.repo,
+        blobEntries,
+        evaluation.approvedPaths,
+        headers,
+      );
 
       onImport({
         name,
@@ -179,7 +186,7 @@ export function ImportProjectDialog({
         sourceLabel: "GitHub",
         cacheKey: `github:${repository.owner}/${repository.repo}:${treeData.sha ?? repoData.default_branch}:${fileCount}`,
         privacy: evaluation.privacy,
-        analysis: analyzeProjectSources({ name, sourcePaths: evaluation.sourcePaths, documents }),
+        analysis: analyzeProjectSources({ name, sourcePaths: evaluation.sourcePaths, documents, assets }),
       });
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "GitHub could not be reached.");
@@ -397,6 +404,44 @@ async function loadGitHubSourceDocuments(
   return documents;
 }
 
+async function loadGitHubPreviewAssets(
+  owner: string,
+  repository: string,
+  entries: Array<{ path: string; sha?: string; size?: number }>,
+  approvedPaths: readonly string[],
+  headers: Record<string, string>,
+) {
+  const approved = new Set(approvedPaths);
+  const candidates = entries
+    .filter((entry) => approved.has(entry.path) && entry.sha && previewAssetMimeType(entry.path) && (entry.size ?? 0) <= 2_000_000)
+    .slice(0, 24);
+  const assets: SafePreviewAsset[] = [];
+  let assetBudget = 6_000_000;
+  for (const entry of candidates) {
+    if (!entry.sha || assetBudget <= 0 || (entry.size ?? 0) > assetBudget) break;
+    const response = await fetch(`https://api.github.com/repos/${owner}/${repository}/git/blobs/${encodeURIComponent(entry.sha)}`, { headers });
+    if (!response.ok) continue;
+    const data = (await response.json()) as { content?: string; encoding?: string };
+    const mimeType = previewAssetMimeType(entry.path);
+    if (!mimeType || data.encoding !== "base64" || typeof data.content !== "string") continue;
+    const base64 = data.content.replace(/\s/g, "");
+    assetBudget -= Math.ceil(base64.length * 0.75);
+    assets.push({ path: entry.path, dataUrl: `data:${mimeType};base64,${base64}` });
+  }
+  return assets;
+}
+
+function previewAssetMimeType(path: string) {
+  const extension = path.split(".").at(-1)?.toLowerCase();
+  return extension === "png" ? "image/png"
+    : extension === "jpg" || extension === "jpeg" ? "image/jpeg"
+      : extension === "gif" ? "image/gif"
+        : extension === "webp" ? "image/webp"
+          : extension === "avif" ? "image/avif"
+            : extension === "ico" ? "image/x-icon"
+              : null;
+}
+
 function loadExternalScript(src: string, id: string) {
   const existing = document.getElementById(id) as HTMLScriptElement | null;
   if (existing?.dataset.loaded === "true") return Promise.resolve();
@@ -558,9 +603,9 @@ async function countGoogleDriveSourceFiles(rootFolderId: string, projectName: st
   }
 
   const evaluation = evaluateProjectPaths(projectFiles.map((file) => file.path), policies);
-  const approvedPaths = new Set(evaluation.sourcePaths);
+  const approvedSourcePaths = new Set(evaluation.sourcePaths);
   const candidates = projectFiles
-    .filter((file) => approvedPaths.has(file.path) && file.size <= 180_000)
+    .filter((file) => approvedSourcePaths.has(file.path) && file.size <= 180_000)
     .sort((left, right) => sourceAnalysisPriority(left.path) - sourceAnalysisPriority(right.path))
     .slice(0, 80);
   const documents: SafeSourceDocument[] = [];
@@ -575,9 +620,33 @@ async function countGoogleDriveSourceFiles(rootFolderId: string, projectName: st
     contentBudget -= content.length;
     documents.push({ path: file.path, content });
   }
+  const assets: SafePreviewAsset[] = [];
+  const approvedAssetPaths = new Set(evaluation.approvedPaths);
+  let assetBudget = 6_000_000;
+  for (const file of projectFiles) {
+    const mimeType = previewAssetMimeType(file.path);
+    if (assets.length >= 24 || assetBudget <= 0) break;
+    if (!mimeType || !approvedAssetPaths.has(file.path) || file.size > 2_000_000 || file.size > assetBudget) continue;
+    const response = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(file.id)}?alt=media`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!response.ok) continue;
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    assetBudget -= bytes.byteLength;
+    assets.push({ path: file.path, dataUrl: `data:${mimeType};base64,${bytesToBase64(bytes)}` });
+  }
   return {
     fileCount: evaluation.sourcePaths.length,
     privacy: evaluation.privacy,
-    analysis: analyzeProjectSources({ name: cleanProjectName(projectName), sourcePaths: evaluation.sourcePaths, documents }),
+    analysis: analyzeProjectSources({ name: cleanProjectName(projectName), sourcePaths: evaluation.sourcePaths, documents, assets }),
   };
+}
+
+function bytesToBase64(bytes: Uint8Array) {
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+  }
+  return window.btoa(binary);
 }

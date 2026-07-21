@@ -520,7 +520,17 @@ function ApplicationInterfaceCarousel({
           <span className="browser-live">{contextLabel}</span>
         </div>
         <div className="application-page-live" aria-live="polite" aria-atomic="true">
-          <ApplicationPagePreview page={activePage} project={project} />
+          <ApplicationPagePreview
+            page={activePage}
+            project={project}
+            onNavigate={(destination) => {
+              const destinationRoute = normalizeImportedDestination(destination, activePage.route);
+              if (!destinationRoute) return;
+              const targetIndex = pages.findIndex((candidate) => candidate.route.toLowerCase() === destinationRoute.toLowerCase())
+                ?? -1;
+              if (targetIndex >= 0) onPageChange(targetIndex);
+            }}
+          />
         </div>
       </div>
 
@@ -770,19 +780,11 @@ function AiChangeAssistant({
   );
 }
 
-function ApplicationPagePreview({ page, project }: { page: ApplicationPage; project: ImportedProject }) {
+function ApplicationPagePreview({ page, project, onNavigate }: { page: ApplicationPage; project: ImportedProject; onNavigate: (destination: string) => void }) {
   if (project.source === "demo") return <ShopSpringPagePreview page={page} projectName={project.name} />;
 
   if (page.previewHtml) {
-    return (
-      <iframe
-        className="imported-interface-frame"
-        title={`${project.name} — ${page.name} imported interface`}
-        srcDoc={page.previewHtml}
-        sandbox=""
-        referrerPolicy="no-referrer"
-      />
-    );
+    return <ImportedInterfaceFrame page={page} projectName={project.name} onNavigate={onNavigate} />;
   }
 
   const kind = project.analysis?.kind ?? "application";
@@ -817,6 +819,58 @@ function ApplicationPagePreview({ page, project }: { page: ApplicationPage; proj
       <footer className="detected-preview-footer"><span>{project.analysis?.framework}</span><span>Read-only structural preview</span></footer>
     </div>
   );
+}
+
+function ImportedInterfaceFrame({ page, projectName, onNavigate }: { page: ApplicationPage; projectName: string; onNavigate: (destination: string) => void }) {
+  const frame = useRef<HTMLIFrameElement>(null);
+  const navigate = useRef(onNavigate);
+
+  useEffect(() => {
+    navigate.current = onNavigate;
+  }, [onNavigate]);
+
+  function connectNavigation() {
+    const document = frame.current?.contentDocument;
+    if (!document) return;
+    for (const anchor of document.querySelectorAll<HTMLAnchorElement>("a[href]")) {
+      anchor.onclick = (event) => {
+        event.preventDefault();
+        const destination = anchor.getAttribute("href");
+        if (destination) navigate.current(destination);
+      };
+    }
+  }
+
+  return (
+    <iframe
+      ref={frame}
+      className="imported-interface-frame"
+      title={`${projectName} — ${page.name} imported interface`}
+      srcDoc={page.previewHtml}
+      sandbox="allow-same-origin"
+      referrerPolicy="no-referrer"
+      onLoad={connectNavigation}
+    />
+  );
+}
+
+function normalizeImportedDestination(destination: string, currentRoute: string) {
+  const trimmed = destination.trim();
+  if (!trimmed || /^(?:https?:|mailto:|tel:|javascript:)/i.test(trimmed)) return null;
+  if (trimmed.startsWith("#")) return `/${trimmed}`;
+
+  const currentPath = currentRoute.split("#")[0] || "/";
+  const basePath = currentPath === "/" ? "/index.html" : `${currentPath.replace(/\/$/, "")}.html`;
+  let url: URL;
+  try {
+    url = new URL(trimmed, `https://imported.local${basePath}`);
+  } catch {
+    return null;
+  }
+  if (url.origin !== "https://imported.local") return null;
+  let path = url.pathname.replace(/\/index\.html?$/i, "/").replace(/\.html?$/i, "").replace(/\/+$/g, "") || "/";
+  if (!path.startsWith("/")) path = `/${path}`;
+  return url.hash ? `${path === "/" ? "" : path}/${url.hash}`.replace("/#", "/#") : path;
 }
 
 function ShopSpringPagePreview({ page, projectName }: { page: ApplicationPage; projectName: string }) {

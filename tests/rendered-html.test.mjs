@@ -72,6 +72,7 @@ test("renders approved static HTML as a real isolated interface", () => {
 
 test("reads only approved source after privacy exclusions", async () => {
   const reads = new Map();
+  const assetReads = new Map();
   const file = (path, content) => ({
     name: path.split("/").at(-1),
     webkitRelativePath: `Portfolio/${path}`,
@@ -81,21 +82,30 @@ test("reads only approved source after privacy exclusions", async () => {
       reads.set(path, (reads.get(path) ?? 0) + 1);
       return content;
     },
+    async arrayBuffer() {
+      assetReads.set(path, (assetReads.get(path) ?? 0) + 1);
+      return new TextEncoder().encode(content).buffer;
+    },
   });
   const summary = await summarizeProjectFilesSafely([
-    file(".gitignore", ".env.local\nsrc/ignored.ts\n"),
+    file(".gitignore", ".env.local\nsrc/ignored.ts\nignored.png\n"),
     file(".env.local", "OPENAI_API_KEY=must-not-be-read"),
     file("src/ignored.ts", "const privateDraft = true"),
-    file("src/App.tsx", "<main><h1>My Portfolio</h1><section id=\"projects\"><h2>Projects</h2></section></main>"),
+    file("ignored.png", "blocked-image"),
+    file("index.html", "<main><h1>My Portfolio</h1><img src=\"portrait.png\"><section id=\"projects\"><h2>Projects</h2></section></main>"),
+    file("portrait.png", "approved-image"),
     file("package.json", '{"dependencies":{"react":"19","vite":"7"}}'),
   ]);
 
   assert.equal(reads.get(".gitignore"), 1);
   assert.equal(reads.has(".env.local"), false);
   assert.equal(reads.has("src/ignored.ts"), false);
-  assert.equal(reads.get("src/App.tsx"), 1);
+  assert.equal(reads.get("index.html"), 1);
+  assert.equal(assetReads.has("ignored.png"), false);
+  assert.equal(assetReads.get("portrait.png"), 1);
   assert.equal(summary.analysis.kind, "portfolio");
-  assert.deepEqual(summary.analysis.indexedFilePaths.sort(), ["package.json", "src/App.tsx"]);
+  assert.deepEqual(summary.analysis.indexedFilePaths.sort(), ["index.html", "package.json"]);
+  assert.match(summary.analysis.pages[0].previewHtml ?? "", /src="data:image\/png;base64,/);
 });
 
 async function render(pathname = "/") {
@@ -357,7 +367,8 @@ test("keeps Current Application focused on its consent-first page carousel", asy
   assert.match(source, /Allow change planning/);
   assert.match(source, /Approve sandbox draft/);
   assert.match(source, /This prototype does not edit connected source files yet/);
-  assert.match(source, /className="imported-interface-frame"[\s\S]*srcDoc=\{page\.previewHtml\}[\s\S]*sandbox=""[\s\S]*referrerPolicy="no-referrer"/);
+  assert.match(source, /className="imported-interface-frame"[\s\S]*srcDoc=\{page\.previewHtml\}[\s\S]*sandbox="allow-same-origin"[\s\S]*referrerPolicy="no-referrer"[\s\S]*onLoad=\{connectNavigation\}/);
+  assert.match(source, /anchor\.onclick = \(event\)[\s\S]*event\.preventDefault\(\)[\s\S]*navigate\.current\(destination\)/);
   assert.match(source, /This is the imported static interface/);
 });
 

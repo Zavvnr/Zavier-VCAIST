@@ -1,5 +1,5 @@
 import ignore from "ignore";
-import { analyzeProjectSources, type ProjectAnalysis, type SafeSourceDocument } from "./project-analysis.ts";
+import { analyzeProjectSources, type ProjectAnalysis, type SafePreviewAsset, type SafeSourceDocument } from "./project-analysis.ts";
 
 export type ProjectSource = "demo" | "local" | "google-drive" | "github";
 
@@ -63,6 +63,16 @@ const ignoredSegments = new Set([
   "node_modules",
   "vendor",
 ]);
+
+const previewAssetMimeTypes: Record<string, string> = {
+  avif: "image/avif",
+  gif: "image/gif",
+  ico: "image/x-icon",
+  jpeg: "image/jpeg",
+  jpg: "image/jpeg",
+  png: "image/png",
+  webp: "image/webp",
+};
 
 export function isSourcePath(path: string) {
   const normalized = path.replaceAll("\\", "/");
@@ -156,13 +166,27 @@ export async function summarizeProjectFilesSafely(files: FileList | File[]) {
     documents.push({ path, content });
   }
 
+  const approvedPaths = new Set(evaluation.approvedPaths);
+  const assets: SafePreviewAsset[] = [];
+  let assetBudget = 6_000_000;
+  for (const file of projectFiles) {
+    if (assets.length >= 24 || assetBudget <= 0) break;
+    const path = projectRelativePath(file.webkitRelativePath || file.name);
+    const extension = path.split(".").at(-1)?.toLowerCase() ?? "";
+    const mimeType = previewAssetMimeTypes[extension];
+    if (!mimeType || !approvedPaths.has(path) || file.size > 2_000_000 || file.size > assetBudget) continue;
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    assetBudget -= bytes.byteLength;
+    assets.push({ path, dataUrl: `data:${mimeType};base64,${bytesToBase64(bytes)}` });
+  }
+
   const name = projectNameFromFiles(projectFiles);
 
   return {
     fileCount: evaluation.sourcePaths.length,
     cacheKey: `local:${(fingerprint >>> 0).toString(36)}:${evaluation.sourcePaths.length}:${evaluation.privacy.exposedSecretFileCount}`,
     privacy: evaluation.privacy,
-    analysis: analyzeProjectSources({ name, sourcePaths: evaluation.sourcePaths, documents }),
+    analysis: analyzeProjectSources({ name, sourcePaths: evaluation.sourcePaths, documents, assets }),
   };
 }
 
@@ -189,6 +213,7 @@ export function createGitignorePolicy(gitignorePath: string, contents: string): 
 
 export function evaluateProjectPaths(paths: readonly string[], policies: readonly GitignorePolicy[]) {
   const sourcePaths: string[] = [];
+  const approvedPaths: string[] = [];
   let excludedFileCount = 0;
   let exposedSecretFileCount = 0;
 
@@ -207,11 +232,13 @@ export function evaluateProjectPaths(paths: readonly string[], policies: readonl
       excludedFileCount += 1;
       continue;
     }
+    approvedPaths.push(path);
     if (isSourcePath(path)) sourcePaths.push(path);
   }
 
   return {
     sourcePaths,
+    approvedPaths,
     privacy: {
       policyStatus: "enforced" as const,
       gitignoreRuleCount: policies.reduce((total, policy) => total + policy.patterns.length, 0),
@@ -219,6 +246,15 @@ export function evaluateProjectPaths(paths: readonly string[], policies: readonl
       exposedSecretFileCount,
     },
   };
+}
+
+function bytesToBase64(bytes: Uint8Array) {
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+  }
+  return btoa(binary);
 }
 
 export function isSensitiveProjectPath(rawPath: string) {
