@@ -5450,7 +5450,7 @@ strong {
 
 .source-preview {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 8px;
 }
 
@@ -6057,7 +6057,7 @@ strong {
 
 .source-options {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 9px;
   padding: 18px 20px 0;
 }
@@ -6108,12 +6108,6 @@ strong {
   font-size: 10px;
   letter-spacing: -0.03em;
   background: #222b27;
-}
-
-.source-logo.google-drive,
-.remote-logo.drive {
-  color: var(--blue);
-  background: var(--blue-soft);
 }
 
 .source-copy {
@@ -6247,18 +6241,6 @@ strong {
   margin-top: 9px !important;
   color: var(--soft-muted) !important;
   font-size: 8px !important;
-}
-
-.drive-button {
-  min-height: 44px;
-  color: var(--blue);
-  background: var(--blue-soft);
-  border-color: color-mix(in srgb, var(--blue) 35%, var(--line));
-}
-
-.drive-button > span {
-  color: var(--blue);
-  font-size: 17px;
 }
 
 .import-error {

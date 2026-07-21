@@ -40,7 +40,7 @@ const workspaceViewGuides: Record<WorkspaceView, {
   compare: {
     eyebrow: "COMPARE · INTERFACE TO INTERFACE",
     title: "Compare your current app with another app",
-    description: "This page places two application interfaces side by side. Keep your connected app on the left, choose a second app from a local folder, Google Drive, or GitHub, and move through each page carousel independently.",
+    description: "This page places two application interfaces side by side. Keep your connected app on the left, choose a second app from a local folder or GitHub, and move through each page carousel independently.",
     actions: ["Keep your current app visible", "Choose a second app", "Compare every page"],
   },
   map: {
@@ -270,10 +270,10 @@ export function Dashboard({ startWithImporter = false }: { startWithImporter?: b
           <section className="direct-workspace-start">
             <span className="section-kicker">YOUR PROJECT, YOUR CHOICE</span>
             <h2>Try VCAIST with the app you already have</h2>
-            <p>Choose a local folder, a Google Drive folder, or a public GitHub repository. VCAIST reads supported source files without changing your project.</p>
+            <p>Choose a local folder or a public GitHub repository. VCAIST reads supported source files without changing your project.</p>
             <button className="button dark" onClick={() => setImportOpen(true)}>Choose project source <span aria-hidden="true">→</span></button>
             <div className="direct-source-list" aria-label="Available project sources">
-              <span>Local folder</span><span>Google Drive</span><span>GitHub</span>
+              <span>Local folder</span><span>GitHub</span>
             </div>
           </section>
         )}
@@ -355,7 +355,7 @@ export function Dashboard({ startWithImporter = false }: { startWithImporter?: b
         <ImportProjectDialog
           eyebrow="COMPARISON APPLICATION"
           title="Which app would you like to compare?"
-          description="Choose a local folder, Google Drive folder, or public GitHub repository. Your current application stays connected."
+          description="Choose a local folder or public GitHub repository. Your current application stays connected."
           onClose={() => setComparisonImportOpen(false)}
           onImport={(nextProject) => {
             setComparisonProject(nextProject);
@@ -708,7 +708,9 @@ function ApplicationInterfaceCarousel({
           {isGuidedDemo
             ? "This carousel shows all four pages in the bundled ShopSpring practice application."
             : activePage.previewHtml
-              ? `This is the imported static interface from ${activePage.sourcePath}, rendered in an isolated sandbox. Approved local images and linked downloads work; scripts, forms, external requests, and storage access remain disabled.`
+              ? activePage.previewKind === "reconstructed"
+                ? `This is a source-backed reconstruction of ${activePage.route} from ${activePage.sourcePath}. It combines the page with its imported interface components so framework projects remain reviewable without executing a production build.`
+                : `This is the imported static interface from ${activePage.sourcePath}, rendered in an isolated sandbox. Approved local images, downloads, and interaction scripts can run; external requests, form submissions, and access to your browser storage remain blocked.`
               : `This source-backed interface reconstruction was generated from ${project.analysis?.analyzedFileCount ?? 0} approved files in ${project.name}. This view requires a framework build, so imported code is not executed in the browser.`}
         </p>
       ) : null}
@@ -743,7 +745,7 @@ function CompareApplications({
             <h3 id="comparison-empty-title">What would you like to compare with {currentProject.name}?</h3>
             <p>Select another project. Your current application stays connected and neither source is changed.</p>
             <button type="button" className="button dark" onClick={onChooseComparison}>Choose comparison app <span aria-hidden="true">→</span></button>
-            <div className="comparison-source-options" aria-label="Comparison project sources"><span>⌁ Local folder</span><span>△ Google Drive</span><span>GH GitHub</span></div>
+            <div className="comparison-source-options" aria-label="Comparison project sources"><span>⌁ Local folder</span><span>GH GitHub</span></div>
           </article>
         )}
       </div>
@@ -1003,17 +1005,16 @@ function ImportedInterfaceFrame({ page, projectName, onNavigate }: { page: Appli
     navigate.current = onNavigate;
   }, [onNavigate]);
 
-  function connectNavigation() {
-    const document = frame.current?.contentDocument;
-    if (!document) return;
-    for (const anchor of document.querySelectorAll<HTMLAnchorElement>("a[href]")) {
-      anchor.onclick = (event) => {
-        event.preventDefault();
-        const destination = anchor.getAttribute("href");
-        if (destination) navigate.current(destination);
-      };
+  useEffect(() => {
+    function receivePreviewNavigation(event: MessageEvent) {
+      if (event.source !== frame.current?.contentWindow) return;
+      const message = event.data as { type?: unknown; destination?: unknown } | null;
+      if (!message || message.type !== "vcaist:preview-navigate" || typeof message.destination !== "string") return;
+      navigate.current(message.destination);
     }
-  }
+    window.addEventListener("message", receivePreviewNavigation);
+    return () => window.removeEventListener("message", receivePreviewNavigation);
+  }, []);
 
   return (
     <iframe
@@ -1021,9 +1022,8 @@ function ImportedInterfaceFrame({ page, projectName, onNavigate }: { page: Appli
       className="imported-interface-frame"
       title={`${projectName} — ${page.name} imported interface`}
       srcDoc={page.previewHtml}
-      sandbox="allow-same-origin"
+      sandbox="allow-scripts"
       referrerPolicy="no-referrer"
-      onLoad={connectNavigation}
     />
   );
 }
@@ -1031,7 +1031,7 @@ function ImportedInterfaceFrame({ page, projectName, onNavigate }: { page: Appli
 function normalizeImportedDestination(destination: string, currentRoute: string) {
   const trimmed = destination.trim();
   if (!trimmed || /^(?:https?:|mailto:|tel:|javascript:)/i.test(trimmed)) return null;
-  if (trimmed.startsWith("#")) return `/${trimmed}`;
+  if (trimmed.startsWith("#")) return `${currentRoute.split("#")[0] || "/"}${trimmed}`;
 
   const currentPath = currentRoute.split("#")[0] || "/";
   const basePath = currentPath === "/" ? "/index.html" : `${currentPath.replace(/\/$/, "")}.html`;
@@ -1146,11 +1146,11 @@ function ModelUnavailableDialog({ model, onClose }: { model: ModelId; onClose: (
 }
 
 const programFeatures = [
-  ["Choose your source", "Start with a local folder, a Google Drive folder, or a public GitHub repository."],
+  ["Choose your source", "Start with a local folder or a public GitHub repository."],
   ["Index files clearly", "See an explicit first-load progress state, completion message, and faster repeat checks for unchanged folders."],
   ["Compare AI models", "Choose among Frontier, Workhorse, and Efficient models from OpenAI, Anthropic, Google, Moonshot AI, and Alibaba Cloud."],
   ["Compare application interfaces", "Keep the current app visible while browsing every page of a second app in an independent carousel."],
-  ["Choose either app source", "Select the comparison app from a local folder, Google Drive, or a public GitHub repository without replacing the current app."],
+  ["Choose either app source", "Select the comparison app from a local folder or a public GitHub repository without replacing the current app."],
   ["Follow the app map", "Switch between a plain-English customer journey and technical source, then read a simple entity relationship diagram and open red-highlighted errors in Safety Tests."],
   ["Review system-wide safety", "Combine real boundary runs with guided review of input limits, abuse controls, authorization, payments, resilience, and information exposure."],
   ["Keep human approval", "Review explanations and proposed remedies first. This prototype never publishes a code change automatically."],
@@ -1602,6 +1602,7 @@ function EntityRelationshipSection({
 }) {
   const hasErrors = runtimeErrorCount > 0 || compileErrorCount > 0;
   const isDemo = project.source === "demo";
+  const entityModel = project.analysis?.entityModel;
   const entities = project.analysis?.entities ?? [
     { name: "Customer", attributes: ["customer_id · PK", "email", "name"] },
     { name: "Order", attributes: ["order_id · PK", "customer_id · FK", "total", "status"] },
@@ -1621,7 +1622,13 @@ function EntityRelationshipSection({
           <span className="section-kicker">ENTITY RELATIONSHIP DIAGRAM</span>
           <h2 id="erd-title">{isDemo ? "The four records behind a ShopSpring order" : `The main concepts detected in ${project.name}`}</h2>
         </div>
-        <span className="erd-model-badge">Simple conceptual model</span>
+        <span className="erd-model-badge">{isDemo
+          ? "Bundled conceptual model"
+          : entityModel?.basis === "database-schema"
+            ? "Database-schema model"
+            : entityModel?.basis === "source-types"
+              ? "Source-type model"
+              : "Structural fallback"}</span>
       </div>
 
       <div className="simple-erd-explanation">
@@ -1629,7 +1636,13 @@ function EntityRelationshipSection({
         <p>An ERD is a picture of the information an application stores and how those records connect. <strong>Rectangles are entities</strong>, <strong>diamonds are relationships</strong>, and <strong>ovals are important attributes</strong>. The labels <code>1</code> and <code>M</code> mean “one” and “many.” Underlined attributes are primary keys; attributes marked <code>FK</code> point to another entity.</p>
       </div>
 
-      <div className="erd-scope-note" role="note"><span aria-hidden="true">i</span><p><strong>How to interpret this diagram</strong>{isDemo ? "This is VCAIST’s conceptual model of the bundled ShopSpring example." : `This conceptual model was inferred from the approved ${project.analysis?.kind} source manifest.`} It explains important information relationships; it is not a live database introspection and does not apply schema changes.</p></div>
+      <div className="erd-scope-note" role="note"><span aria-hidden="true">i</span><p><strong>How this diagram was generated</strong>{isDemo
+        ? "This is VCAIST’s conceptual model of the bundled ShopSpring example."
+        : entityModel?.basis === "database-schema"
+          ? `VCAIST detected concrete database models in ${entityModel.evidenceFiles.join(", ")}. The entities, attributes, and connections below come from those approved schema files.`
+          : entityModel?.basis === "source-types"
+            ? `VCAIST detected connected application data types in ${entityModel.evidenceFiles.join(", ")}. The diagram follows their fields and typed references instead of using a generic app template.`
+            : `No connected schema or data-model types were found in the approved files, so this is an explicitly labeled structural fallback for the detected ${project.analysis?.kind ?? "application"}.`} It is read-only source inference, not a live database inspection, and it does not apply schema changes.</p></div>
 
       <div className="chen-erd-legend" aria-label="Entity relationship diagram legend">
         <span><i className="entity" aria-hidden="true" /> Entity</span>

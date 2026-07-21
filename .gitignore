@@ -45,3 +45,5 @@ next-env.d.ts
 
 # unused files
 AGENTS.md
+# clerk configuration (can include secrets)
+/.clerk/

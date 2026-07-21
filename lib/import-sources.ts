@@ -7,7 +7,7 @@ import {
   type SafeSourceDocument,
 } from "./project-analysis.ts";
 
-export type ProjectSource = "demo" | "local" | "google-drive" | "github";
+export type ProjectSource = "demo" | "local" | "github";
 
 export type ImportedProject = {
   name: string;
@@ -225,13 +225,19 @@ export async function summarizeProjectFilesSafely(files: FileList | File[]) {
   }
 
   const approvedPaths = new Set(evaluation.approvedPaths);
-  const referencedAssets = new Set(referencedProjectAssetPaths(documents, evaluation.approvedPaths));
+  const referencedAssets = referencedProjectAssetPaths(documents, evaluation.approvedPaths);
+  const filesByPath = new Map(projectFiles.map((file) => [
+    projectRelativePath(file.webkitRelativePath || file.name).toLowerCase(),
+    file,
+  ]));
   const assets: SafePreviewAsset[] = [];
   let assetBudget = projectAssetLimits.totalBytes;
-  for (const file of projectFiles) {
+  for (const referencedPath of referencedAssets) {
     if (assets.length >= projectAssetLimits.count || assetBudget <= 0) break;
+    const file = filesByPath.get(referencedPath.toLowerCase());
+    if (!file) continue;
     const path = projectRelativePath(file.webkitRelativePath || file.name);
-    if (!approvedPaths.has(path) || !referencedAssets.has(path) || file.size > projectAssetLimits.individualBytes || file.size > assetBudget) continue;
+    if (!approvedPaths.has(path) || file.size > projectAssetLimits.individualBytes || file.size > assetBudget) continue;
     const mimeType = projectAssetMimeType(path, file.type);
     const bytes = new Uint8Array(await file.arrayBuffer());
     assetBudget -= bytes.byteLength;

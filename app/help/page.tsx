@@ -44,7 +44,7 @@ export default function HelpPage() {
           <div>
             <span className="help-badge">QUICK START · 3 MINUTES</span>
             <h2>Your first VCAIST check</h2>
-            <p>Choose your current project, browse its interface, then open Compare and select a second local folder, Google Drive folder, or GitHub repository.</p>
+            <p>Choose your current project, browse its interface, then open Compare and select a second local folder or GitHub repository.</p>
             <Link className="button dark link-button" href="/workspace" prefetch={false}>Open my workspace <span aria-hidden="true">→</span></Link>
           </div>
           <div className="help-steps" aria-label="Quick-start steps">

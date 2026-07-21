@@ -54,7 +54,133 @@ test("builds a portfolio manifest instead of reusing the financial demo", () => 
   assert.doesNotMatch(JSON.stringify(analysis), /ShopSpring|checkout|shopping cart|Stripe/i);
 });
 
-test("renders approved static HTML as a real isolated interface", () => {
+test("reconstructs route pages and expands state-driven screens inside a route", async () => {
+  const paths = [
+    "package.json",
+    "app/page.tsx",
+    "app/workspace/page.tsx",
+    "app/settings/page.tsx",
+    "app/help/page.tsx",
+    "app/demo/page.tsx",
+    "app/Dashboard.tsx",
+    "app/Onboarding.tsx",
+    "app/components/AppChrome.tsx",
+    "lib/import-sources.ts",
+    "lib/project-analysis.ts",
+    "tests/rendered-html.test.mjs",
+  ];
+  const documents = await Promise.all(paths.map(async (path) => ({
+    path,
+    content: await readFile(new URL(`../${path}`, import.meta.url), "utf8"),
+  })));
+  const analysis = analyzeProjectSources({ name: "Zavier VCAISSIST", sourcePaths: paths, documents });
+  const routes = analysis.pages.map((page) => page.route);
+
+  assert.equal(analysis.framework, "Next.js");
+  assert.equal(analysis.kind, "dashboard");
+  assert.deepEqual(routes, [
+    "/",
+    "/workspace",
+    "/workspace#application",
+    "/workspace#compare",
+    "/workspace#map",
+    "/workspace#tests",
+    "/settings",
+    "/help",
+    "/demo",
+    "/demo#application",
+    "/demo#compare",
+    "/demo#map",
+    "/demo#tests",
+  ]);
+  assert.doesNotMatch(routes.join(" "), /source-unavailable|package[.-]?json|\/tests?(?:\/|$)/i);
+  assert.deepEqual(analysis.navigationGraph.nodes.map((node) => node.route), routes);
+  assert.deepEqual(analysis.workflow.map((step) => step.technicalDetail), routes);
+  const workspace = analysis.pages.find((page) => page.route === "/workspace");
+  assert.equal(workspace?.name, "Overview");
+  assert.equal(workspace?.sourcePath, "app/Dashboard.tsx");
+  assert.equal(workspace?.previewKind, "reconstructed");
+  assert.match(workspace?.previewHtml ?? "", /source-backed preview|Reconstructed from approved interface source/);
+  assert.match(workspace?.previewHtml ?? "", /plain-English control room|complete analysis loop/i);
+  assert.equal(analysis.pages.find((page) => page.route === "/workspace#application")?.name, "Current Application");
+  const compare = analysis.pages.find((page) => page.route === "/workspace#compare");
+  assert.equal(compare?.name, "Compare");
+  assert.ok(compare?.descriptions?.some((description) => description.includes("purpose without changing either project.")));
+  assert.doesNotMatch(compare?.actions?.join(" ") ?? "", /onPreviewModeChange|=>|className/);
+  assert.doesNotMatch(compare?.previewHtml ?? "", /onPreviewModeChange|=>|className=/);
+  assert.match(compare?.previewHtml ?? "", />Original<|>Proposed</);
+  assert.equal(analysis.pages.find((page) => page.route === "/workspace#map")?.name, "App Map");
+  assert.equal(analysis.pages.find((page) => page.route === "/workspace#tests")?.name, "Safety Tests");
+  assert.equal(analysis.entityModel.basis, "source-types");
+  assert.ok(analysis.entityModel.evidenceFiles.some((path) => path === "lib/project-analysis.ts" || path === "lib/import-sources.ts"));
+  assert.ok(analysis.entities.some((entity) => /Project Analysis|Imported Project|Project Page/.test(entity.name)));
+  assert.ok(analysis.relationships.some((relationship) => /Project Analysis|Imported Project|Project Page/.test(`${relationship.from} ${relationship.to}`)));
+  assert.ok(analysis.entities.every((entity) => !["Application", "Source Module", "User Action"].includes(entity.name)));
+});
+
+test("builds an ERD from an approved Prisma schema instead of a category template", () => {
+  const schema = `
+    model User {
+      id String @id
+      email String @unique
+      orders Order[]
+    }
+    model Order {
+      id String @id
+      userId String
+      user User @relation(fields: [userId], references: [id])
+      items OrderItem[]
+    }
+    model OrderItem {
+      id String @id
+      orderId String
+      order Order @relation(fields: [orderId], references: [id])
+      quantity Int
+    }
+  `;
+  const analysis = analyzeProjectSources({
+    name: "Orders application",
+    sourcePaths: ["prisma/schema.prisma", "app/page.tsx"],
+    documents: [
+      { path: "prisma/schema.prisma", content: schema },
+      { path: "app/page.tsx", content: "export default function Home(){return <h1>Orders</h1>}" },
+    ],
+  });
+  assert.equal(analysis.entityModel.basis, "database-schema");
+  assert.deepEqual(analysis.entityModel.evidenceFiles, ["prisma/schema.prisma"]);
+  assert.deepEqual(analysis.entities.map((entity) => entity.name).sort(), ["Order", "Order Item", "User"]);
+  assert.ok(analysis.entities.find((entity) => entity.name === "Order")?.attributes.includes("id · PK"));
+  assert.ok(analysis.relationships.some((relationship) => relationship.from === "User" && relationship.to === "Order" && relationship.toCount === "M"));
+  assert.ok(analysis.entities.every((entity) => entity.name !== "Application"));
+});
+
+test("keeps every framework route even when its source content is outside the deep-analysis budget", () => {
+  const sourcePaths = ["app/page.tsx", "app/one/page.tsx", "app/two/page.tsx", "app/three/page.tsx"];
+  const analysis = analyzeProjectSources({
+    name: "Large routed app",
+    sourcePaths,
+    documents: [{ path: "app/page.tsx", content: "export default function Home(){return <h1>Home</h1>}" }],
+  });
+  assert.deepEqual(analysis.pages.map((page) => page.route), ["/", "/one", "/two", "/three"]);
+});
+
+test("supports SvelteKit and filters routes found only inside tests", () => {
+  const svelte = analyzeProjectSources({
+    name: "Svelte workspace",
+    sourcePaths: ["package.json", "src/routes/+page.svelte", "src/routes/about/+page.svelte", "tests/routes.test.ts"],
+    documents: [
+      { path: "package.json", content: '{"dependencies":{"@sveltejs/kit":"2"}}' },
+      { path: "src/routes/+page.svelte", content: "<h1>Workspace home</h1><a href='/about'>About</a>" },
+      { path: "src/routes/about/+page.svelte", content: "<h1>About this workspace</h1>" },
+      { path: "tests/routes.test.ts", content: 'const fixtures = [{ path: "/package-json" }, { path: "/source-unavailable" }];' },
+    ],
+  });
+  assert.equal(svelte.framework, "SvelteKit");
+  assert.deepEqual(svelte.pages.map((page) => page.route), ["/", "/about"]);
+  assert.ok(svelte.pages.every((page) => page.previewKind === "reconstructed"));
+});
+
+test("renders approved static HTML as an interactive, network-isolated interface", () => {
   const analysis = analyzeProjectSources({
     name: "Zavier Portfolio",
     sourcePaths: ["index.html", "styles.css"],
@@ -67,8 +193,32 @@ test("renders approved static HTML as a real isolated interface", () => {
   assert.match(preview, /Zavier Rahmansyah/);
   assert.match(preview, /body\{background:#101615/);
   assert.match(preview, /Content-Security-Policy/);
-  assert.doesNotMatch(preview, /<script|onclick=|steal\(\)|alert\('no'\)/i);
+  assert.match(preview, /script-src 'unsafe-inline'/);
+  assert.match(preview, /connect-src 'none'/);
+  assert.match(preview, /onclick="steal\(\)"/);
+  assert.match(preview, /alert\('no'\)/);
+  assert.match(preview, /vcaist:preview-navigate/);
   assert.deepEqual(analysis.navigationGraph.edges.map((edge) => edge.label), ["Experience", "Contact"]);
+});
+
+test("inlines approved local interaction scripts but removes remote scripts", () => {
+  const analysis = analyzeProjectSources({
+    name: "Interactive portfolio",
+    sourcePaths: ["index.html", "scripts/interactions.js"],
+    documents: [
+      {
+        path: "index.html",
+        content: `<button id="menu">Menu</button><script src="scripts/interactions.js"></script><script src="https://tracker.example/collect.js"></script>`,
+      },
+      {
+        path: "scripts/interactions.js",
+        content: `document.getElementById("menu").addEventListener("click",()=>document.body.classList.toggle("menu-open"));`,
+      },
+    ],
+  });
+  const preview = analysis.pages[0].previewHtml ?? "";
+  assert.match(preview, /classList\.toggle\("menu-open"\)/);
+  assert.doesNotMatch(preview, /tracker\.example|collect\.js/);
 });
 
 test("keeps a complete embedded image instead of truncating the generated preview", () => {
@@ -96,6 +246,47 @@ test("selects only referenced approved assets and supports generic downloads", (
     "private/unreferenced.zip",
   ]);
   assert.deepEqual(selected.sort(), ["media/portrait.jfif", "site/files/Resume 2026.pdf"]);
+});
+
+test("inlines lazy, responsive, encoded, and CSS image references", () => {
+  const documents = [{
+    path: "pages/work.html",
+    content: `<picture><source data-srcset="../media/Case%20Study.webp 1x, ../media/portrait.png 2x">
+      <img src="placeholder.gif" data-lazy-src="../media/Case%20Study.webp?version=2" alt="Case study"></picture>
+      <div style="background-image:url('../media/portrait.png')"></div>`,
+  }];
+  const assets = [
+    { path: "media/Case Study.webp", mimeType: "image/webp", fileName: "Case Study.webp", dataUrl: "data:image/webp;base64,Q0FTRQ==" },
+    { path: "media/portrait.png", mimeType: "image/png", fileName: "portrait.png", dataUrl: "data:image/png;base64,UE9SVFJBSVQ=" },
+  ];
+
+  assert.deepEqual(
+    referencedProjectAssetPaths(documents, assets.map((asset) => asset.path)).sort(),
+    ["media/Case Study.webp", "media/portrait.png"],
+  );
+
+  const analysis = analyzeProjectSources({
+    name: "Image portfolio",
+    sourcePaths: ["pages/work.html"],
+    documents,
+    assets,
+  });
+  const preview = analysis.pages[0].previewHtml ?? "";
+  assert.match(preview, /data-lazy-src="data:image\/webp;base64,Q0FTRQ=="/);
+  assert.match(preview, /src="data:image\/webp;base64,Q0FTRQ=="/);
+  assert.match(preview, /srcset="data:image\/webp;base64,Q0FTRQ== 1x, data:image\/png;base64,UE9SVFJBSVQ= 2x"/);
+  assert.match(preview, /background-image:url\("data:image\/png;base64,UE9SVFJBSVQ="\)/);
+});
+
+test("discovers image module imports for approved framework assets", () => {
+  const documents = [{
+    path: "src/gallery.tsx",
+    content: `import portrait from "../public/portrait.jpg"; const card = new URL("../public/card.png", import.meta.url);`,
+  }];
+  assert.deepEqual(
+    referencedProjectAssetPaths(documents, ["public/portrait.jpg", "public/card.png"]).sort(),
+    ["public/card.png", "public/portrait.jpg"],
+  );
 });
 
 test("reads only approved source after privacy exclusions", async () => {
@@ -202,9 +393,14 @@ test("server-renders a direct workspace with the project chooser", async () => {
   assert.match(html, /Try VCAIST with the app you already have/);
   assert.match(html, /Where is your project\?/);
   assert.match(html, /Local folder/);
-  assert.match(html, /Google Drive/);
   assert.match(html, /GitHub/);
   assert.doesNotMatch(html, /ShopSpring is connected/);
+
+  const [dashboard, importer] = await Promise.all([
+    readFile(new URL("../app/Dashboard.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/components/ImportProjectDialog.tsx", import.meta.url), "utf8"),
+  ]);
+  assert.doesNotMatch(`${dashboard}\n${importer}`, /Google Drive|google-drive/);
 });
 
 test("server-renders the interactive financial demo separately", async () => {
@@ -464,8 +660,9 @@ test("keeps Current Application focused on its consent-first page carousel", asy
   assert.match(source, /Reset preview/);
   assert.match(source, /No connected source files were changed/);
   assert.match(source, /applySandboxProposal/);
-  assert.match(source, /className="imported-interface-frame"[\s\S]*srcDoc=\{page\.previewHtml\}[\s\S]*sandbox="allow-same-origin"[\s\S]*referrerPolicy="no-referrer"[\s\S]*onLoad=\{connectNavigation\}/);
-  assert.match(source, /anchor\.onclick = \(event\)[\s\S]*event\.preventDefault\(\)[\s\S]*navigate\.current\(destination\)/);
+  assert.match(source, /className="imported-interface-frame"[\s\S]*srcDoc=\{page\.previewHtml\}[\s\S]*sandbox="allow-scripts"[\s\S]*referrerPolicy="no-referrer"/);
+  assert.doesNotMatch(source, /sandbox="allow-scripts allow-same-origin"|sandbox="allow-same-origin allow-scripts"/);
+  assert.match(source, /event\.source !== frame\.current\?\.contentWindow[\s\S]*vcaist:preview-navigate[\s\S]*navigate\.current\(message\.destination\)/);
   assert.match(source, /findImportedAsset\(project\.analysis\?\.assets[\s\S]*downloadImportedAsset\(asset\)/);
   assert.match(source, /link\.download = asset\.fileName/);
   assert.match(source, /This is the imported static interface/);
@@ -504,7 +701,8 @@ test("replaces Controls with a two-application carousel comparison", async () =>
   assert.match(source, /function ApplicationInterfaceCarousel[\s\S]*aria-roledescription="carousel"/);
   assert.match(source, /Which app would you like to compare\?/);
   assert.match(source, /setComparisonProject\(nextProject\)/);
-  assert.match(source, /Local folder[\s\S]*Google Drive[\s\S]*GitHub/);
+  assert.match(source, /Local folder[\s\S]*GitHub/);
+  assert.doesNotMatch(source, /Google Drive/);
   assert.doesNotMatch(source, /function Controls\(|function FullKnob\(/);
   const compareComponent = source.match(/function CompareApplications[\s\S]*?(?=function ComparisonAppCarousel)/)?.[0] ?? "";
   assert.doesNotMatch(compareComponent, /AiChangeAssistant|range-input|monthly revenue|Estimated margin/);
@@ -534,6 +732,8 @@ test("shows a simple ERD and directs red-highlighted program errors to Safety Te
   assert.match(source, /name: "Customer"[\s\S]*name: "Order"[\s\S]*name: "Order Item"[\s\S]*name: "Product"/);
   assert.match(source, /name: "places"[\s\S]*name: "contains"[\s\S]*name: "references"/);
   assert.match(source, /relationships\.map[\s\S]*<ChenEntity name=\{from\.name\}[\s\S]*<ChenRelationship[\s\S]*<ChenEntity name=\{to\.name\}/);
+  assert.match(source, /entityModel\?\.basis === "database-schema"[\s\S]*entityModel\?\.basis === "source-types"[\s\S]*Structural fallback/);
+  assert.match(source, /diagram follows their fields and typed references instead of using a generic app template/);
   assert.doesNotMatch(source, /ENTITY DICTIONARY/);
   assert.doesNotMatch(source, /appEntities\.map/);
   assert.match(source, /PROGRAM ERROR DETECTED/);
@@ -663,7 +863,7 @@ test("blocks ignored environment and secret files before project analysis", asyn
   assert.match(importer, /path\.split\("\/"\)\.at\(-1\)\?\.toLowerCase\(\) === "\.gitignore"/);
   assert.match(importer, /Ignored environment and secret files are never inspected/);
   assert.match(importer, /repository is too large to verify every \.gitignore policy safely/);
-  assert.match(importer, /Drive folder is too large to verify every \.gitignore policy safely/);
+  assert.doesNotMatch(importer, /Google Drive|google-drive|googleapis\.com/);
   assert.match(dashboard, /severity: "critical"[\s\S]*Sensitive configuration is not protected by \.gitignore/);
   assert.match(dashboard, /File contents were not read, indexed, cached, logged, or sent to an AI provider/);
   assert.match(dashboard, /Review Critical Safety Test/);

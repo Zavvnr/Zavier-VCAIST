@@ -20,12 +20,6 @@ import { analyzeProjectSources, referencedProjectAssetPaths, type SafePreviewAss
 
 type ImportSource = Exclude<ProjectSource, "demo">;
 
-const googleDriveConfig = {
-  appId: process.env.NEXT_PUBLIC_GOOGLE_DRIVE_APP_ID ?? "",
-  apiKey: process.env.NEXT_PUBLIC_GOOGLE_DRIVE_API_KEY ?? "",
-  clientId: process.env.NEXT_PUBLIC_GOOGLE_DRIVE_CLIENT_ID ?? "",
-};
-
 const directoryAttributes = {
   directory: "",
   webkitdirectory: "",
@@ -44,13 +38,6 @@ const sourceOptions: Array<{
     description: "Choose a project folder on this device.",
     symbol: "⌁",
     badge: "READY",
-  },
-  {
-    id: "google-drive",
-    label: "Google Drive",
-    description: "Pick a folder from your Drive account.",
-    symbol: "△",
-    badge: "CONNECT",
   },
   {
     id: "github",
@@ -199,38 +186,6 @@ export function ImportProjectDialog({
     }
   }
 
-  async function importGoogleDriveFolder() {
-    if (!googleDriveConfig.clientId || !googleDriveConfig.apiKey || !googleDriveConfig.appId) {
-      setError(
-        "Google Drive needs its Client ID, API key, and App ID in the project environment before it can connect.",
-      );
-      return;
-    }
-
-    setBusy(true);
-    setError("");
-    try {
-      const picked = await chooseGoogleDriveFolder();
-      if (!picked) return;
-      const { fileCount, privacy, analysis } = await countGoogleDriveSourceFiles(picked.id, picked.name, picked.accessToken);
-      if (!fileCount) throw new Error("That Drive folder does not contain supported source files.");
-
-      onImport({
-        name: cleanProjectName(picked.name),
-        fileCount,
-        source: "google-drive",
-        sourceLabel: "Google Drive",
-        cacheKey: `google-drive:${picked.id}:${fileCount}`,
-        privacy,
-        analysis,
-      });
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Google Drive could not be reached.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
   return (
     <div
       className="import-backdrop"
@@ -314,19 +269,6 @@ export function ImportProjectDialog({
                 </button>
               </div>
               <p className="source-footnote">Private repositories require the supported GitHub connector.</p>
-            </div>
-          ) : null}
-
-          {source === "google-drive" ? (
-            <div className="remote-source-panel drive-panel">
-              <div className="remote-source-copy">
-                <span className="remote-logo drive" aria-hidden="true">△</span>
-                <div><h3>Choose a Google Drive folder</h3><p>Google asks for read-only access; VCAIST applies privacy rules before source analysis.</p></div>
-              </div>
-              <button className="button drive-button full" onClick={() => void importGoogleDriveFolder()} disabled={busy}>
-                <span aria-hidden="true">△</span>{busy ? "Connecting…" : "Continue with Google Drive"}
-              </button>
-              <p className="source-footnote">Access tokens stay in memory and are never saved in the browser.</p>
             </div>
           ) : null}
 
@@ -417,9 +359,12 @@ async function loadGitHubPreviewAssets(
   headers: Record<string, string>,
 ) {
   const approved = new Set(approvedPaths);
-  const referenced = new Set(referencedProjectAssetPaths(documents, approvedPaths));
-  const candidates = entries
-    .filter((entry) => approved.has(entry.path) && referenced.has(entry.path) && entry.sha && (entry.size ?? 0) <= projectAssetLimits.individualBytes)
+  const entriesByPath = new Map(entries.map((entry) => [entry.path.toLowerCase(), entry]));
+  const candidates = referencedProjectAssetPaths(documents, approvedPaths)
+    .map((path) => entriesByPath.get(path.toLowerCase()))
+    .filter((entry): entry is { path: string; sha?: string; size?: number } => Boolean(
+      entry && approved.has(entry.path) && entry.sha && (entry.size ?? 0) <= projectAssetLimits.individualBytes,
+    ))
     .slice(0, projectAssetLimits.count);
   const assets: SafePreviewAsset[] = [];
   let assetBudget = projectAssetLimits.totalBytes;
@@ -437,215 +382,4 @@ async function loadGitHubPreviewAssets(
     assets.push({ path: entry.path, mimeType, fileName: projectAssetFileName(entry.path), dataUrl: `data:${mimeType};base64,${base64}` });
   }
   return assets;
-}
-
-function loadExternalScript(src: string, id: string) {
-  const existing = document.getElementById(id) as HTMLScriptElement | null;
-  if (existing?.dataset.loaded === "true") return Promise.resolve();
-
-  return new Promise<void>((resolve, reject) => {
-    const script = existing ?? document.createElement("script");
-    script.id = id;
-    script.src = src;
-    script.async = true;
-    script.defer = true;
-    script.addEventListener("load", () => {
-      script.dataset.loaded = "true";
-      resolve();
-    }, { once: true });
-    script.addEventListener("error", () => reject(new Error("Google sign-in could not be loaded.")), { once: true });
-    if (!existing) document.head.appendChild(script);
-  });
-}
-
-type GoogleWindow = Window & {
-  gapi: {
-    load: (name: string, options: { callback: () => void; onerror: () => void }) => void;
-  };
-  google: {
-    accounts: {
-      oauth2: {
-        initTokenClient: (options: {
-          client_id: string;
-          scope: string;
-          callback: (response: { access_token?: string; error?: string }) => void;
-        }) => { requestAccessToken: (options: { prompt: string }) => void };
-      };
-    };
-    picker: {
-      Action: { CANCEL: string; PICKED: string };
-      DocsView: new (viewId: string) => {
-        setIncludeFolders: (enabled: boolean) => GoogleDocsView;
-        setSelectFolderEnabled: (enabled: boolean) => GoogleDocsView;
-      };
-      PickerBuilder: new () => GooglePickerBuilder;
-      ViewId: { FOLDERS: string };
-    };
-  };
-};
-
-type GoogleDocsView = {
-  setIncludeFolders: (enabled: boolean) => GoogleDocsView;
-  setSelectFolderEnabled: (enabled: boolean) => GoogleDocsView;
-};
-
-type GooglePickerBuilder = {
-  addView: (view: GoogleDocsView) => GooglePickerBuilder;
-  build: () => { setVisible: (visible: boolean) => void };
-  setAppId: (id: string) => GooglePickerBuilder;
-  setCallback: (callback: (data: { action: string; docs?: Array<{ id: string; name: string }> }) => void) => GooglePickerBuilder;
-  setDeveloperKey: (key: string) => GooglePickerBuilder;
-  setOAuthToken: (token: string) => GooglePickerBuilder;
-  setOrigin: (origin: string) => GooglePickerBuilder;
-};
-
-async function chooseGoogleDriveFolder() {
-  await Promise.all([
-    loadExternalScript("https://accounts.google.com/gsi/client", "google-identity-script"),
-    loadExternalScript("https://apis.google.com/js/api.js", "google-api-script"),
-  ]);
-  const googleWindow = window as unknown as GoogleWindow;
-  await new Promise<void>((resolve, reject) => {
-    googleWindow.gapi.load("picker", { callback: resolve, onerror: () => reject(new Error("Google Picker could not be loaded.")) });
-  });
-
-  return new Promise<{ id: string; name: string; accessToken: string } | null>((resolve, reject) => {
-    const tokenClient = googleWindow.google.accounts.oauth2.initTokenClient({
-      client_id: googleDriveConfig.clientId,
-      scope: "https://www.googleapis.com/auth/drive.readonly",
-      callback: (response) => {
-        if (response.error || !response.access_token) {
-          reject(new Error("Google Drive permission was not granted."));
-          return;
-        }
-
-        const accessToken = response.access_token;
-        const view = new googleWindow.google.picker.DocsView(googleWindow.google.picker.ViewId.FOLDERS)
-          .setIncludeFolders(true)
-          .setSelectFolderEnabled(true);
-        const picker = new googleWindow.google.picker.PickerBuilder()
-          .setDeveloperKey(googleDriveConfig.apiKey)
-          .setAppId(googleDriveConfig.appId)
-          .setOAuthToken(accessToken)
-          .setOrigin(window.location.origin)
-          .addView(view)
-          .setCallback((data) => {
-            if (data.action === googleWindow.google.picker.Action.CANCEL) resolve(null);
-            if (data.action === googleWindow.google.picker.Action.PICKED && data.docs?.[0]) {
-              resolve({ ...data.docs[0], accessToken });
-            }
-          })
-          .build();
-        picker.setVisible(true);
-      },
-    });
-    tokenClient.requestAccessToken({ prompt: "consent" });
-  });
-}
-
-async function countGoogleDriveSourceFiles(rootFolderId: string, projectName: string, accessToken: string) {
-  const folderMimeType = "application/vnd.google-apps.folder";
-  const pendingFolders = [{ id: rootFolderId, path: "" }];
-  const projectFiles: Array<{ id: string; path: string; size: number; mimeType: string }> = [];
-  let inspectedItems = 0;
-
-  while (pendingFolders.length && inspectedItems < 2000) {
-    const folder = pendingFolders.shift();
-    if (!folder) break;
-    let pageToken = "";
-
-    do {
-      const query = `'${folder.id.replaceAll("'", "\\'")}' in parents and trashed = false`;
-      const params = new URLSearchParams({
-        fields: "nextPageToken,files(id,name,mimeType,size)",
-        includeItemsFromAllDrives: "true",
-        pageSize: "1000",
-        q: query,
-        supportsAllDrives: "true",
-      });
-      if (pageToken) params.set("pageToken", pageToken);
-      const response = await fetch(`https://www.googleapis.com/drive/v3/files?${params}`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
-      if (!response.ok) throw new Error("Google Drive could not list that folder.");
-      const data = (await response.json()) as {
-        files?: Array<{ id: string; name: string; mimeType: string; size?: string }>;
-        nextPageToken?: string;
-      };
-
-      for (const item of data.files ?? []) {
-        inspectedItems += 1;
-        const path = folder.path ? `${folder.path}/${item.name}` : item.name;
-        if (item.mimeType === folderMimeType) pendingFolders.push({ id: item.id, path });
-        else projectFiles.push({ id: item.id, path, size: Number(item.size ?? 0), mimeType: item.mimeType });
-        if (inspectedItems >= 2000) break;
-      }
-      pageToken = data.nextPageToken ?? "";
-    } while (pageToken && inspectedItems < 2000);
-  }
-
-  if (pendingFolders.length || inspectedItems >= 2000) {
-    throw new Error("This Drive folder is too large to verify every .gitignore policy safely.");
-  }
-
-  const ignoreFiles = projectFiles.filter((file) => file.path.split("/").at(-1)?.toLowerCase() === ".gitignore");
-  if (ignoreFiles.length > 50) throw new Error("This folder has too many ignore policies to verify safely.");
-  const policies: GitignorePolicy[] = [];
-  for (const ignoreFile of ignoreFiles) {
-    const response = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(ignoreFile.id)}?alt=media`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-    if (!response.ok) throw new Error("VCAIST could not verify this folder's privacy rules.");
-    policies.push(createGitignorePolicy(ignoreFile.path, await response.text()));
-  }
-
-  const evaluation = evaluateProjectPaths(projectFiles.map((file) => file.path), policies);
-  const approvedSourcePaths = new Set(evaluation.sourcePaths);
-  const candidates = projectFiles
-    .filter((file) => approvedSourcePaths.has(file.path) && file.size <= 180_000)
-    .sort((left, right) => sourceAnalysisPriority(left.path) - sourceAnalysisPriority(right.path))
-    .slice(0, 80);
-  const documents: SafeSourceDocument[] = [];
-  let contentBudget = 1_500_000;
-  for (const file of candidates) {
-    if (contentBudget <= 0) break;
-    const response = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(file.id)}?alt=media`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-    if (!response.ok) continue;
-    const content = (await response.text()).slice(0, Math.min(180_000, contentBudget));
-    contentBudget -= content.length;
-    documents.push({ path: file.path, content });
-  }
-  const assets: SafePreviewAsset[] = [];
-  const approvedAssetPaths = new Set(evaluation.approvedPaths);
-  const referencedAssets = new Set(referencedProjectAssetPaths(documents, evaluation.approvedPaths));
-  let assetBudget = projectAssetLimits.totalBytes;
-  for (const file of projectFiles) {
-    if (assets.length >= projectAssetLimits.count || assetBudget <= 0) break;
-    if (!approvedAssetPaths.has(file.path) || !referencedAssets.has(file.path) || file.size > projectAssetLimits.individualBytes || file.size > assetBudget) continue;
-    const response = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(file.id)}?alt=media`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-    if (!response.ok) continue;
-    const bytes = new Uint8Array(await response.arrayBuffer());
-    if (bytes.byteLength > projectAssetLimits.individualBytes || bytes.byteLength > assetBudget) continue;
-    const mimeType = projectAssetMimeType(file.path, file.mimeType);
-    assetBudget -= bytes.byteLength;
-    assets.push({ path: file.path, mimeType, fileName: projectAssetFileName(file.path), dataUrl: `data:${mimeType};base64,${bytesToBase64(bytes)}` });
-  }
-  return {
-    fileCount: evaluation.sourcePaths.length,
-    privacy: evaluation.privacy,
-    analysis: analyzeProjectSources({ name: cleanProjectName(projectName), sourcePaths: evaluation.sourcePaths, documents, assets }),
-  };
-}
-
-function bytesToBase64(bytes: Uint8Array) {
-  let binary = "";
-  const chunkSize = 0x8000;
-  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
-    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
-  }
-  return window.btoa(binary);
 }

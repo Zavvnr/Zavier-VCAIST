@@ -8,7 +8,7 @@ const tutorialSteps = [
     id: 0,
     eyebrow: "START HERE",
     title: "Choose where your app lives",
-    description: "Point VCAIST at a local folder, Google Drive folder, or GitHub repository. Your original project stays untouched.",
+    description: "Point VCAIST at a local folder or GitHub repository. Your original project stays untouched.",
     time: "About 30 seconds",
   },
   {
@@ -208,7 +208,6 @@ function TutorialPreview({ step }: { step: number }) {
     return (
       <div className="lesson-preview source-preview" aria-label="Project source choices">
         <button><span>⌁</span><strong>Local folder</strong><small>On this device</small></button>
-        <button><span>△</span><strong>Google Drive</strong><small>Choose a folder</small></button>
         <button><span className="gh">GH</span><strong>GitHub</strong><small>Paste a repository</small></button>
       </div>
     );

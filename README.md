@@ -8,8 +8,8 @@ The current prototype demonstrates a safe application-understanding loop with a 
 
 - Explains an app's workflow as both a plain-English and technical map, then summarizes its core data model in a simple entity relationship diagram.
 - Finds adjustable business values such as prices, discounts, thresholds, and fees.
-- Lets users choose a local project folder, a Google Drive folder, or a public GitHub repository as the project source.
-- Keeps the current app connected while users choose a second local, Google Drive, or GitHub project for side-by-side interface comparison.
+- Lets users choose a local project folder or a public GitHub repository as the project source.
+- Keeps the current app connected while users choose a second local or GitHub project for side-by-side interface comparison.
 - Connects those values to responsive controls that re-run the sample app logic immediately.
 - Combines executed business-logic checks with guided system-design and security review, then translates every risk into understandable impact and protection guidance.
 - Keeps humans in the loop. This prototype never publishes a code change.
@@ -51,10 +51,6 @@ npm test
 
 Authentication is required for `/workspace`, `/demo`, `/settings`, and every AI endpoint. Create a Clerk application, copy `.env.example` to `.env.local`, and set `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` plus `CLERK_SECRET_KEY`; real values must never be committed. The public tutorial, About redirect, Help center, sign-in, and sign-up routes remain public. AI features additionally require at least one configured provider key. The cost-conscious model selector supports OpenAI, Anthropic, Google, Moonshot AI, and Alibaba Cloud, with GPT-5.6 Luna as the default and compact prices in `USD input / output per 1M tokens` format.
 
-### Optional Google Drive connection
-
-Local folders and public GitHub repositories work without credentials. Google Drive uses Google's read-only Picker flow and needs three public identifiers from a Google Cloud project. Copy `.env.example` to `.env.local`, fill in the values, enable the Google Picker and Drive APIs, and add your local and deployed origins to the OAuth client. No OAuth client secret belongs in the browser environment.
-
 ### Vercel deployment
 
 The hosted application targets Vercel's native Next.js runtime. Connect the GitHub repository to a Vercel project, review a Preview deployment first, and promote an approved build to Production only when the platform is ready.
@@ -69,8 +65,6 @@ Configure these server-side Production values as encrypted Vercel environment va
 - `DASHSCOPE_API_KEY`
 
 Add `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` as the Clerk browser identifier, then set the four Clerk route variables from `.env.example`. In the Clerk dashboard, add the Vercel Preview and Production domains as allowed origins/redirects. Workspace routes and AI APIs fail closed when a valid Clerk session is absent.
-
-Google Drive additionally needs `NEXT_PUBLIC_GOOGLE_DRIVE_APP_ID`, `NEXT_PUBLIC_GOOGLE_DRIVE_API_KEY`, and `NEXT_PUBLIC_GOOGLE_DRIVE_CLIENT_ID`. These three identifiers are intentionally available to browser code and are not server secrets. Add the deployed Vercel origin to the Google OAuth client's authorized JavaScript origins before testing Drive import. Environment-variable changes apply on the next Vercel deployment.
 
 ### Hardware
 
@@ -87,12 +81,12 @@ The interface uses a desktop sidebar, fluid content grids, touch-friendly contro
 
 - **Private accounts and sessions** — Clerk provides sign-in, sign-up, managed secure cookies, account switching, and sign-out. Workspace, demo, settings, model availability, navigation generation, and Change Assistant requests each enforce authentication on the server rather than relying on hidden client controls.
 - **Guided welcome page** — explains what VCAIST is for, walks through its four-step safety loop, and offers both a demo and a direct path into the user's own project.
-- **Direct workspace** — skips the tutorial and demo, opens the project-source chooser immediately, and accepts a local folder, Google Drive folder, or public GitHub repository.
+- **Direct workspace** — skips the tutorial and demo, opens the project-source chooser immediately, and accepts a local folder or public GitHub repository.
 - **Workspace views** — Overview, Current Application, Compare, App map, and Safety tests each begin with a plain-language explanation of the page and three useful actions. Overview contains the program summary, complete feature index, and end-to-end example story.
-- **Current Application** — focuses only on the connected app itself: a responsive four-page application carousel and a consent-first AI change chat. Users can browse every guided application page with buttons or arrow keys. The assistant stays locked until the user grants permission, and it asks for separate approval before recording a sandbox draft request. Financial metrics, sandbox results, safety findings, and business controls are intentionally excluded from this page.
-- **Project importer** — one source chooser for local directories, Google Drive folders, and public GitHub repositories, with an explicit indexing state and clear completion message.
+- **Current Application** — focuses only on the connected app itself: a responsive carousel of detected routes and a consent-first AI change chat. Static HTML runs in a network-isolated sandbox; framework routes receive source-backed visual reconstructions assembled from page metadata, imported interface components, styles, actions, navigation, and approved images. The assistant stays locked until the user grants permission and asks separately before creating a sandbox draft.
+- **Project importer** — one source chooser for local directories and public GitHub repositories, with an explicit indexing state and clear completion message.
 - **Device-local scan cache** — fingerprints supported file metadata so an unchanged project can skip repeat indexing on the same browser for 30 days. Source contents are never stored in the cache, and browsers still require the user to select a local folder again for privacy.
-- **Compare** — keeps the connected app visible in its own four-page carousel and lets the user select a second app from a local folder, Google Drive, or GitHub. The comparison app opens in an independent carousel so matching pages can be reviewed side by side. The prototype labels the selected projects honestly and uses guided commerce-page templates until project-specific interface rendering is connected.
+- **Compare** — keeps the connected app visible in its own carousel and lets the user select a second app from a local folder or GitHub. The comparison app opens in an independent carousel so matching pages can be reviewed side by side.
 - **Live sandbox** — re-runs the connected pricing function without touching live customers or production data.
 - **App map** — toggles between a plain-English purchase flow and the corresponding technical path. Every workflow step opens its mapped file in a line-numbered, read-only source workspace. A simplified conceptual entity relationship diagram uses rectangles for the four core entities, diamonds for relationships, ovals for important attributes, and one/many cardinality labels. A failing workflow module and its source file are highlighted in red, followed by a warning beneath the diagram with a direct link to Safety Tests. The longer entity dictionary has been removed.
 - **Safety tests** — presents a searchable, clickable system-wide findings list instead of only customer-facing edge cases. It combines the executed zero-quantity pricing check with guided code and architecture review for input-length limits, rate limiting, client/server trust boundaries, payment idempotency, object authorization, error disclosure, and webhook verification. Every finding opens full evidence, failure or attack scenarios, affected systems, and recommended protections.
@@ -117,7 +111,7 @@ The interface uses a desktop sidebar, fluid content grids, touch-friendly contro
 
 ### Current boundaries
 
-Folder and repository imports remain session-only inside the authenticated browser workspace: local files stay in browser memory, GitHub imports read the public repository tree, and Google Drive uses an in-memory read-only access token. VCAIST does not currently maintain a shared project database, so there is no cross-account project collection to enumerate or query. Current Application renders approved static interfaces when available and uses a source-backed structural reconstruction for framework pages. The Change Assistant creates an Original/Proposed visual sandbox after explicit approval but does not edit connected source files. Durable user-scoped project storage, private GitHub access, patch generation, and approval-based publishing remain future backend milestones; any future persistence must store the Clerk user ID as the owner and enforce that ownership again in the data-access layer.
+Folder and repository imports remain session-only inside the authenticated browser workspace: local files stay in browser memory and GitHub imports read the public repository tree. VCAIST does not currently maintain a shared project database, so there is no cross-account project collection to enumerate or query. Current Application renders approved static interfaces when available and reconstructs framework pages without executing an arbitrary production build; server-only behavior and build-time transformations therefore remain outside the preview. The Change Assistant creates an Original/Proposed visual sandbox after explicit approval but does not edit connected source files. Durable user-scoped project storage, private GitHub access, patch generation, and approval-based publishing remain future backend milestones; any future persistence must store the Clerk user ID as the owner and enforce that ownership again in the data-access layer.
 
 ## What comes After
 
