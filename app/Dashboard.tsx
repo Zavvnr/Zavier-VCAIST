@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEven
 import { AppChrome } from "./components/AppChrome";
 import { ImportProjectDialog } from "./components/ImportProjectDialog";
 import type { ImportedProject } from "@/lib/import-sources";
+import type { ProjectPage, ProjectWorkflowStep } from "@/lib/project-analysis";
 import {
   defaultPreferences,
   modelGroups,
@@ -156,7 +157,7 @@ export function Dashboard({ startWithImporter = false }: { startWithImporter?: b
   }, []);
 
   const testResults = useMemo(() => stressTest(knobs), [knobs]);
-  const runtimeErrorCount = testResults.filter((result) => !result.passed).length;
+  const runtimeErrorCount = project.source === "demo" ? testResults.filter((result) => !result.passed).length : 0;
 
   function updateModel(nextModel: ModelId) {
     if (modelAvailability[nextModel] === false) {
@@ -249,7 +250,7 @@ export function Dashboard({ startWithImporter = false }: { startWithImporter?: b
 
       <div className="workspace-content">
         {projectReady ? <WorkspaceViewIntroduction view={view} /> : null}
-        {projectReady && view === "overview" ? <ProgramOverview /> : null}
+        {projectReady && view === "overview" ? <ProgramOverview project={project} /> : null}
 
         {projectConnected ? <div className={scanning ? "scan-status loading" : "scan-status"} role="status" aria-live="polite">
           <span className={scanning ? "status-orb scanning" : "status-orb"} aria-hidden="true">
@@ -299,8 +300,10 @@ export function Dashboard({ startWithImporter = false }: { startWithImporter?: b
           <div className="prototype-notice complete" role="note">
             <span className="notice-complete-icon" aria-hidden="true">✓</span>
             <div>
-              <strong>Source-file indexing is complete. Nothing is still loading.</strong>
-              <span>Project-specific AI extraction and page rendering are not available in this prototype. The application carousels use guided interface previews labeled with the projects you select.</span>
+              <strong>Project analysis is complete. Nothing is still loading.</strong>
+              <span>{project.analysis
+                ? `${project.analysis.analyzedFileCount} approved files were read into a private, redacted manifest. Every workspace page below now uses the detected ${project.analysis.kind} structure.`
+                : "The approved source index is ready."}</span>
               <small>{scanCacheHit
                 ? "This folder matched the private cache on this device, so repeat indexing was skipped."
                 : "This project fingerprint is now cached privately on this device for faster repeat loads."}</small>
@@ -322,6 +325,7 @@ export function Dashboard({ startWithImporter = false }: { startWithImporter?: b
 
         {projectReady && view === "map" ? (
           <AppMap
+            project={project}
             mode={mapMode}
             setMode={setMapMode}
             runtimeErrorCount={runtimeErrorCount}
@@ -413,17 +417,21 @@ function ProjectScanProgress({ project }: { project: ImportedProject }) {
   );
 }
 
-const applicationPages = [
-  { id: "home", name: "Home", route: "/", purpose: "Brand story and featured products" },
-  { id: "catalog", name: "Catalog", route: "/shop", purpose: "Browse and compare the full collection" },
-  { id: "cart", name: "Cart", route: "/cart", purpose: "Review items, discounts, and totals" },
-  { id: "checkout", name: "Checkout", route: "/checkout", purpose: "Confirm delivery and payment" },
-] as const;
+const demoApplicationPages: readonly ProjectPage[] = [
+  { id: "home", name: "Home", route: "/", purpose: "Brand story and featured products", sourcePath: "src/app/page.tsx", summary: "A candle storefront introduces the brand and featured products.", headings: ["Make everyday rituals feel considered."], navigation: ["New", "Shop", "Our story"], code: "export default function HomePage() {\n  return <Storefront />;\n}" },
+  { id: "catalog", name: "Catalog", route: "/shop", purpose: "Browse and compare the full collection", sourcePath: "src/app/shop/page.tsx", summary: "The full candle collection appears in a product grid.", headings: ["Find your next favorite"], navigation: ["New", "Shop", "Our story"], code: "export default function CatalogPage() {\n  return <ProductGrid />;\n}" },
+  { id: "cart", name: "Cart", route: "/cart", purpose: "Review items, discounts, and totals", sourcePath: "src/app/cart/page.tsx", summary: "The shopper reviews items and the calculated order total.", headings: ["A few good things"], navigation: ["New", "Shop", "Our story"], code: "export default function CartPage() {\n  return <Cart />;\n}" },
+  { id: "checkout", name: "Checkout", route: "/checkout", purpose: "Confirm delivery and payment", sourcePath: "src/app/checkout/page.tsx", summary: "The shopper confirms delivery details before payment.", headings: ["Where should we send it?"], navigation: ["New", "Shop", "Our story"], code: "export default function CheckoutPage() {\n  return <Checkout />;\n}" },
+];
 
-type ApplicationPage = (typeof applicationPages)[number];
+type ApplicationPage = ProjectPage;
 type AssistantPermission = "pending" | "granted" | "declined";
 type ProposalState = "none" | "ready" | "approved";
 type ChatMessage = { role: "assistant" | "user"; text: string };
+
+function pagesForProject(project: ImportedProject) {
+  return project.analysis?.pages.length ? project.analysis.pages : demoApplicationPages;
+}
 
 function ApplicationCarousel({
   project,
@@ -435,7 +443,9 @@ function ApplicationCarousel({
   onModelUnavailable: () => void;
 }) {
   const [activeIndex, setActiveIndex] = useState(0);
-  const activePage = applicationPages[activeIndex];
+  const pages = pagesForProject(project);
+  const safeActiveIndex = activeIndex % pages.length;
+  const activePage = pages[safeActiveIndex];
 
   return (
     <section className="panel current-application-panel" aria-labelledby="application-carousel-title">
@@ -447,11 +457,11 @@ function ApplicationCarousel({
             Move through the page carousel, inspect what customers see, and ask the AI assistant to plan a change only after you give permission.
           </p>
         </div>
-        <span className="page-inventory-pill">{applicationPages.length} pages found</span>
+        <span className="page-inventory-pill">{pages.length} {pages.length === 1 ? "view" : "views"} found</span>
       </div>
 
       <div className="application-carousel-layout">
-        <ApplicationInterfaceCarousel project={project} activeIndex={activeIndex} onPageChange={setActiveIndex} contextLabel="Preview" />
+        <ApplicationInterfaceCarousel project={project} activeIndex={safeActiveIndex} onPageChange={setActiveIndex} contextLabel="Preview" />
 
         <AiChangeAssistant page={activePage} projectName={project.name} model={model} onModelUnavailable={onModelUnavailable} />
       </div>
@@ -472,11 +482,13 @@ function ApplicationInterfaceCarousel({
   contextLabel: string;
   compact?: boolean;
 }) {
-  const activePage = applicationPages[activeIndex];
+  const pages = pagesForProject(project);
+  const safeActiveIndex = activeIndex % pages.length;
+  const activePage = pages[safeActiveIndex];
   const isGuidedDemo = project.source === "demo";
 
   function movePage(direction: number) {
-    onPageChange((activeIndex + direction + applicationPages.length) % applicationPages.length);
+    onPageChange((safeActiveIndex + direction + pages.length) % pages.length);
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLElement>) {
@@ -505,7 +517,7 @@ function ApplicationInterfaceCarousel({
           <span className="browser-live">{contextLabel}</span>
         </div>
         <div className="application-page-live" aria-live="polite" aria-atomic="true">
-          <ApplicationPagePreview page={activePage} projectName={project.name} />
+          <ApplicationPagePreview page={activePage} project={project} />
         </div>
       </div>
 
@@ -513,20 +525,20 @@ function ApplicationInterfaceCarousel({
         <button type="button" className="carousel-arrow" onClick={() => movePage(-1)} aria-label={`Show previous page in ${project.name}`}>←</button>
         <div>
           <strong>{activePage.name}</strong>
-          <span>Page {activeIndex + 1} of {applicationPages.length} · {activePage.purpose}</span>
+          <span>View {safeActiveIndex + 1} of {pages.length} · {activePage.purpose}</span>
         </div>
         <button type="button" className="carousel-arrow" onClick={() => movePage(1)} aria-label={`Show next page in ${project.name}`}>→</button>
       </div>
 
       <div className="application-page-list" role="tablist" aria-label={`All pages in ${project.name}`}>
-        {applicationPages.map((page, index) => (
+        {pages.map((page, index) => (
           <button
             type="button"
             key={page.id}
-            className={index === activeIndex ? "application-page-tab active" : "application-page-tab"}
+            className={index === safeActiveIndex ? "application-page-tab active" : "application-page-tab"}
             onClick={() => onPageChange(index)}
             role="tab"
-            aria-selected={index === activeIndex}
+            aria-selected={index === safeActiveIndex}
           >
             <span>{String(index + 1).padStart(2, "0")}</span>
             <div><strong>{page.name}</strong><small>{page.route}</small></div>
@@ -538,7 +550,7 @@ function ApplicationInterfaceCarousel({
         <p className="application-preview-boundary">
           {isGuidedDemo
             ? "This carousel shows all four pages in the bundled ShopSpring practice application."
-            : `VCAIST found ${project.fileCount} supported files in ${project.name}. The four-page commerce preview remains the guided sample until project-specific page rendering is connected.`}
+            : `This structural preview was generated from ${project.analysis?.analyzedFileCount ?? 0} approved source files in ${project.name}. It shows detected routes, headings, navigation, and purpose without executing untrusted project code.`}
         </p>
       ) : null}
     </div>
@@ -557,7 +569,7 @@ function CompareApplications({
   return (
     <section className="panel compare-applications-panel" aria-labelledby="compare-applications-title">
       <div className="compare-applications-heading">
-        <div><span className="section-kicker">SIDE-BY-SIDE INTERFACES</span><h2 id="compare-applications-title">Compare two applications page by page</h2><p>Each side is an independent carousel. Move through Home, Catalog, Cart, and Checkout to compare structure, hierarchy, and customer flow without changing either project.</p></div>
+        <div><span className="section-kicker">SIDE-BY-SIDE INTERFACES</span><h2 id="compare-applications-title">Compare two applications page by page</h2><p>Each side uses its own detected page manifest. Move through real routes, headings, navigation, and purpose without changing either project.</p></div>
         <button type="button" className={comparisonProject ? "button ghost" : "button dark"} onClick={onChooseComparison}>{comparisonProject ? "Choose another app" : "Choose comparison app"} <span aria-hidden="true">＋</span></button>
       </div>
 
@@ -577,19 +589,20 @@ function CompareApplications({
         )}
       </div>
 
-      <div className="comparison-preview-note" role="note"><span aria-hidden="true">i</span><p><strong>Prototype preview</strong>The selected project names and source-file counts are real. Until project-specific rendering is connected, both carousels use the same four guided commerce-page templates so the comparison interaction can be tested safely.</p></div>
+      <div className="comparison-preview-note" role="note"><span aria-hidden="true">i</span><p><strong>Safe structural comparison</strong>Each carousel is generated independently from approved source. VCAIST does not execute imported code or claim that this is a pixel-perfect browser render.</p></div>
     </section>
   );
 }
 
 function ComparisonAppCarousel({ project, label, contextLabel }: { project: ImportedProject; label: string; contextLabel: string }) {
   const [activeIndex, setActiveIndex] = useState(0);
+  const pages = pagesForProject(project);
 
   return (
     <article className="comparison-app-card">
       <header className="comparison-app-heading">
         <div><span>{label}</span><h3>{project.name}</h3><p>{project.sourceLabel} · {project.fileCount} source files</p></div>
-        <span className="comparison-page-count">{applicationPages.length} pages</span>
+        <span className="comparison-page-count">{pages.length} {pages.length === 1 ? "view" : "views"}</span>
       </header>
       <ApplicationInterfaceCarousel project={project} activeIndex={activeIndex} onPageChange={setActiveIndex} contextLabel={contextLabel} compact />
     </article>
@@ -752,7 +765,44 @@ function AiChangeAssistant({
   );
 }
 
-function ApplicationPagePreview({ page, projectName }: { page: ApplicationPage; projectName: string }) {
+function ApplicationPagePreview({ page, project }: { page: ApplicationPage; project: ImportedProject }) {
+  if (project.source === "demo") return <ShopSpringPagePreview page={page} projectName={project.name} />;
+
+  const kind = project.analysis?.kind ?? "application";
+  const headings = page.headings.length ? page.headings : [page.name, page.purpose];
+  const navigation = page.navigation.length ? page.navigation : pagesForProject(project).map((entry) => entry.name).slice(0, 5);
+
+  return (
+    <div className={`detected-preview-page ${kind}`}>
+      <header className="detected-preview-header">
+        <div><span className="detected-brand-mark" aria-hidden="true">{project.name.slice(0, 1).toUpperCase()}</span><strong>{project.name}</strong></div>
+        <nav aria-label={`${page.name} detected navigation`}>{navigation.map((item) => <span key={item}>{item}</span>)}</nav>
+        <span className="detected-route-pill">{page.route}</span>
+      </header>
+      <div className="detected-preview-body">
+        <section className="detected-preview-hero">
+          <span className="section-kicker">DETECTED {kind.toUpperCase()} VIEW</span>
+          <h3>{headings[0]}</h3>
+          <p>{page.summary}</p>
+          <div className="detected-preview-actions"><span>Primary content</span><span>Source-backed structure</span></div>
+        </section>
+        <aside className="detected-preview-visual" aria-label="Detected page structure">
+          <span className="detected-visual-label">{page.name}</span>
+          <div className="detected-visual-window"><i /><i /><i /></div>
+          <strong>{page.purpose}</strong>
+          <small>{page.sourcePath}</small>
+        </aside>
+      </div>
+      <div className="detected-content-grid">
+        {headings.slice(1, 4).map((heading, index) => <article key={heading}><span>{String(index + 1).padStart(2, "0")}</span><strong>{heading}</strong><small>Detected in approved page source</small></article>)}
+        {headings.length === 1 ? <article><span>01</span><strong>{page.purpose}</strong><small>Primary responsibility of this view</small></article> : null}
+      </div>
+      <footer className="detected-preview-footer"><span>{project.analysis?.framework}</span><span>Read-only structural preview</span></footer>
+    </div>
+  );
+}
+
+function ShopSpringPagePreview({ page, projectName }: { page: ApplicationPage; projectName: string }) {
   return (
     <div className={`shop-preview-page ${page.id}`}>
       <header className="shop-preview-header">
@@ -839,7 +889,9 @@ const programFeatures = [
   ["Adjust the experience", "Use the Help center, persistent settings, four accessible color themes, and responsive phone or desktop layouts."],
 ] as const;
 
-function ProgramOverview() {
+function ProgramOverview({ project }: { project: ImportedProject }) {
+  const analysis = project.analysis;
+  const isDemo = project.source === "demo";
   return (
     <section className="panel program-overview" aria-labelledby="program-overview-title">
       <div className="program-overview-heading">
@@ -851,16 +903,31 @@ function ProgramOverview() {
       </div>
 
       <div className="program-overview-copy">
+        {!isDemo && analysis ? (
+          <div className="connected-project-summary">
+            <span className="section-kicker">WHAT VCAIST FOUND IN THIS APPLICATION</span>
+            <h3>{project.name} is a {analysis.kind} built with {analysis.framework}</h3>
+            <p>{analysis.description}</p>
+            <div className="connected-project-facts">
+              <span><strong>{analysis.pages.length}</strong> detected views</span>
+              <span><strong>{analysis.analyzedFileCount}</strong> approved files analyzed</span>
+              <span><strong>{analysis.technologies.join(" · ")}</strong> detected stack</span>
+            </div>
+          </div>
+        ) : null}
         <p>
           VCAIST gives app owners a plain-English control room for software they depend on. It connects a project source,
           makes important rules visible, lets people test business changes safely, and explains surprising results before
           anyone decides what to change.
         </p>
-        <p>
+        {isDemo ? <p>
           The current prototype indexes supported project files and demonstrates the complete analysis loop with the bundled
           ShopSpring pricing fixture. Project-specific AI extraction and approval-based publishing are the next backend milestones;
           the interface labels that boundary instead of pretending background analysis is still running.
-        </p>
+        </p> : <p>
+          For this connected project, the overview, interface carousel, comparison, app map, and Safety Tests are generated from
+          approved source only. VCAIST does not execute imported code, open ignored secrets, or present the financial demo as project evidence.
+        </p>}
       </div>
 
       <div className="program-feature-grid" aria-label="VCAIST features">
@@ -873,10 +940,11 @@ function ProgramOverview() {
       </div>
 
       <aside className="program-story" aria-labelledby="program-story-title">
-        <div className="story-person" aria-hidden="true">M</div>
+        <div className="story-person" aria-hidden="true">{isDemo ? "M" : "A"}</div>
         <div className="story-copy">
           <span className="section-kicker">EXAMPLE USER STORY</span>
-          <h3 id="program-story-title">Maya needs to understand a checkout she did not build</h3>
+          <h3 id="program-story-title">{isDemo ? "Maya needs to understand a checkout she did not build" : `Alex wants to understand ${project.name} before requesting a change`}</h3>
+          {isDemo ? <>
           <p>
             Maya runs a small online candle shop. Her developer is unavailable, but she needs to understand whether a new bulk
             discount will hurt her margin. She opens VCAIST and chooses the shop’s GitHub repository. The project is indexed,
@@ -888,6 +956,15 @@ function ProgramOverview() {
             <li><strong>Catch a surprise:</strong> A zero-item safety test produces a negative total because shipping is subtracted from an empty order.</li>
             <li><strong>Act with context:</strong> Maya shares the explanation and exact failing case with her developer. Nothing is published without approval.</li>
           </ol>
+          </> : <>
+            <p>Alex connects {project.name} from {project.sourceLabel}. VCAIST applies the project’s ignore rules first, reads only approved source, and builds a private manifest without changing or executing the application.</p>
+            <ol>
+              <li><strong>Orient:</strong> Alex learns that {analysis?.description.toLowerCase()}</li>
+              <li><strong>Browse:</strong> Current Application shows {analysis?.pages.length ?? 1} detected view{analysis?.pages.length === 1 ? "" : "s"}, with real routes and source-backed headings.</li>
+              <li><strong>Trace:</strong> App Map connects those views to the approved files that define them.</li>
+              <li><strong>Review safely:</strong> Safety Tests show only source-backed findings and privacy checks; AI change planning still requires permission.</li>
+            </ol>
+          </>}
         </div>
       </aside>
     </section>
@@ -1104,12 +1181,14 @@ const appEntityRelationships = [
 ] as const;
 
 function AppMap({
+  project,
   mode,
   setMode,
   runtimeErrorCount,
   compileErrorCount,
   onOpenSafetyTests,
 }: {
+  project: ImportedProject;
   mode: "plain" | "technical";
   setMode: (mode: "plain" | "technical") => void;
   runtimeErrorCount: number;
@@ -1117,20 +1196,22 @@ function AppMap({
   onOpenSafetyTests: () => void;
 }) {
   const [selectedStep, setSelectedStep] = useState<number | null>(null);
+  const steps: readonly ProjectWorkflowStep[] = project.analysis?.workflow.length ? project.analysis.workflow : appMapSteps;
+  const isDemo = project.source === "demo";
 
   return (
     <div className="map-layout">
       <section className="panel map-panel">
         <div className="panel-heading horizontal">
-          <div><span className="section-kicker">YOUR APP, EXPLAINED</span><h2>How a purchase moves through ShopSpring</h2><p>Follow the path from adding an item to receiving payment. Select any step to inspect its source.</p></div>
+          <div><span className="section-kicker">YOUR APP, EXPLAINED</span><h2>{isDemo ? "How a purchase moves through ShopSpring" : `How visitors move through ${project.name}`}</h2><p>{isDemo ? "Follow the path from adding an item to receiving payment." : "Follow the detected interface path from the first view to the next important destination."} Select any step to inspect its approved source.</p></div>
           <div className="segmented-control" aria-label="Diagram language">
             <button className={mode === "plain" ? "active" : ""} onClick={() => setMode("plain")}>Plain English</button>
             <button className={mode === "technical" ? "active" : ""} onClick={() => setMode("technical")}>Technical</button>
           </div>
         </div>
         <div className="flow-map">
-          {appMapSteps.map((step, index) => {
-            const hasRuntimeError = runtimeErrorCount > 0 && step.filePath === "lib/pricing.ts";
+          {steps.map((step, index) => {
+            const hasRuntimeError = isDemo && runtimeErrorCount > 0 && step.filePath === "lib/pricing.ts";
             return (
               <div className="flow-step-wrap" key={step.filePath}>
                 <button
@@ -1147,7 +1228,7 @@ function AppMap({
                   {hasRuntimeError ? <span className="flow-error-status">Runtime error · {step.fileName}</span> : null}
                   <span className="flow-source-action">View source <b aria-hidden="true">↓</b></span>
                 </button>
-                {index < appMapSteps.length - 1 ? <span className="flow-arrow" aria-hidden="true">→</span> : null}
+                {index < steps.length - 1 ? <span className="flow-arrow" aria-hidden="true">→</span> : null}
               </div>
             );
           })}
@@ -1155,15 +1236,16 @@ function AppMap({
 
         {selectedStep === null ? (
           <div className="source-workspace-prompt" id="app-map-source-workspace" role="note"><span aria-hidden="true">{`{ }`}</span><p><strong>Select any step to inspect its source</strong>The file will open here in a read-only workspace.</p></div>
-        ) : <SourceCodeWorkspace selectedStep={selectedStep} onSelect={setSelectedStep} runtimeErrorCount={runtimeErrorCount} />}
+        ) : <SourceCodeWorkspace project={project} steps={steps} selectedStep={selectedStep} onSelect={setSelectedStep} runtimeErrorCount={runtimeErrorCount} />}
       </section>
       <aside className="panel map-insight">
         <div className="insight-icon" aria-hidden="true">◎</div><span className="section-kicker">VCAIST NOTICED</span>
-        <h2>One rule affects two important moments</h2>
-        <p>The same pricing function sets the number at checkout and the amount sent to Stripe. A mistake here reaches real payments.</p>
-        <div className="impact-list"><div><span>Checkout total</span><strong>Direct impact</strong></div><div><span>Payment charge</span><strong>Direct impact</strong></div><div><span>Order receipt</span><strong>Copies total</strong></div></div>
+        <h2>{isDemo ? "One rule affects two important moments" : `${project.name} has ${steps.length} connected interface steps`}</h2>
+        <p>{isDemo ? "The same pricing function sets the number at checkout and the amount sent to Stripe. A mistake here reaches real payments." : `VCAIST traced these steps to ${new Set(steps.map((step) => step.filePath)).size} approved source modules. Select a step to see the exact redacted source excerpt.`}</p>
+        <div className="impact-list">{isDemo ? <><div><span>Checkout total</span><strong>Direct impact</strong></div><div><span>Payment charge</span><strong>Direct impact</strong></div><div><span>Order receipt</span><strong>Copies total</strong></div></> : <><div><span>Application type</span><strong>{project.analysis?.kind}</strong></div><div><span>Detected framework</span><strong>{project.analysis?.framework}</strong></div><div><span>Approved files</span><strong>{project.analysis?.analyzedFileCount}</strong></div></>}</div>
       </aside>
       <EntityRelationshipSection
+        project={project}
         runtimeErrorCount={runtimeErrorCount}
         compileErrorCount={compileErrorCount}
         onOpenSafetyTests={onOpenSafetyTests}
@@ -1173,22 +1255,36 @@ function AppMap({
 }
 
 function EntityRelationshipSection({
+  project,
   runtimeErrorCount,
   compileErrorCount,
   onOpenSafetyTests,
 }: {
+  project: ImportedProject;
   runtimeErrorCount: number;
   compileErrorCount: number;
   onOpenSafetyTests: () => void;
 }) {
   const hasErrors = runtimeErrorCount > 0 || compileErrorCount > 0;
+  const isDemo = project.source === "demo";
+  const entities = project.analysis?.entities ?? [
+    { name: "Customer", attributes: ["customer_id · PK", "email", "name"] },
+    { name: "Order", attributes: ["order_id · PK", "customer_id · FK", "total", "status"] },
+    { name: "Order Item", attributes: ["item_id · PK", "order_id · FK", "product_id · FK", "quantity"] },
+    { name: "Product", attributes: ["product_id · PK", "sku", "name", "current_price"] },
+  ];
+  const relationships = project.analysis?.relationships ?? [
+    { from: "Customer", fromCount: "1" as const, name: "places", toCount: "M" as const, to: "Order" },
+    { from: "Order", fromCount: "1" as const, name: "contains", toCount: "M" as const, to: "Order Item" },
+    { from: "Order Item", fromCount: "M" as const, name: "references", toCount: "1" as const, to: "Product" },
+  ];
 
   return (
     <section className="panel erd-section" aria-labelledby="erd-title">
       <div className="erd-heading">
         <div>
           <span className="section-kicker">ENTITY RELATIONSHIP DIAGRAM</span>
-          <h2 id="erd-title">The four records behind a ShopSpring order</h2>
+          <h2 id="erd-title">{isDemo ? "The four records behind a ShopSpring order" : `The main concepts detected in ${project.name}`}</h2>
         </div>
         <span className="erd-model-badge">Simple conceptual model</span>
       </div>
@@ -1198,7 +1294,7 @@ function EntityRelationshipSection({
         <p>An ERD is a picture of the information an application stores and how those records connect. <strong>Rectangles are entities</strong>, <strong>diamonds are relationships</strong>, and <strong>ovals are important attributes</strong>. The labels <code>1</code> and <code>M</code> mean “one” and “many.” Underlined attributes are primary keys; attributes marked <code>FK</code> point to another entity.</p>
       </div>
 
-      <div className="erd-scope-note" role="note"><span aria-hidden="true">i</span><p><strong>How to interpret this prototype</strong>This is VCAIST’s conceptual model of the bundled ShopSpring example. It explains the records the workflow should rely on; it is not a live introspection of an imported database and does not apply schema changes.</p></div>
+      <div className="erd-scope-note" role="note"><span aria-hidden="true">i</span><p><strong>How to interpret this diagram</strong>{isDemo ? "This is VCAIST’s conceptual model of the bundled ShopSpring example." : `This conceptual model was inferred from the approved ${project.analysis?.kind} source manifest.`} It explains important information relationships; it is not a live database introspection and does not apply schema changes.</p></div>
 
       <div className="chen-erd-legend" aria-label="Entity relationship diagram legend">
         <span><i className="entity" aria-hidden="true" /> Entity</span>
@@ -1209,16 +1305,14 @@ function EntityRelationshipSection({
       </div>
 
       <figure className="chen-erd-diagram" aria-labelledby="erd-relationships-title">
-        <figcaption id="erd-relationships-title">Read from left to right: one customer can place many orders; one order contains many line items; many line items can reference one product.</figcaption>
+        <figcaption id="erd-relationships-title">Read each relationship from left to right. The labels 1 and M show whether one or many records can participate.</figcaption>
         <div className="chen-erd-scroll" tabIndex={0} aria-label="Scrollable entity relationship diagram">
           <div className="chen-erd-track">
-            <ChenEntity name="Customer" attributes={["customer_id · PK", "email", "name"]} />
-            <ChenRelationship fromCount="1" name="places" toCount="M" />
-            <ChenEntity name="Order" attributes={["order_id · PK", "customer_id · FK", "total", "status"]} />
-            <ChenRelationship fromCount="1" name="contains" toCount="M" />
-            <ChenEntity name="Order Item" attributes={["item_id · PK", "order_id · FK", "product_id · FK", "quantity", "unit_price"]} />
-            <ChenRelationship fromCount="M" name="references" toCount="1" />
-            <ChenEntity name="Product" attributes={["product_id · PK", "sku", "name", "current_price"]} />
+            {relationships.map((relationship, index) => {
+              const from = entities.find((entity) => entity.name === relationship.from) ?? entities[0];
+              const to = entities.find((entity) => entity.name === relationship.to) ?? entities[index + 1] ?? entities[0];
+              return <div className="chen-relationship-row" key={`${relationship.from}-${relationship.name}-${relationship.to}`}><ChenEntity name={from.name} attributes={from.attributes} /><ChenRelationship fromCount={relationship.fromCount} name={relationship.name} toCount={relationship.toCount} /><ChenEntity name={to.name} attributes={to.attributes} /></div>;
+            })}
           </div>
         </div>
       </figure>
@@ -1264,10 +1358,10 @@ function ChenRelationship({ fromCount, name, toCount }: { fromCount: "1" | "M"; 
   );
 }
 
-function SourceCodeWorkspace({ selectedStep, onSelect, runtimeErrorCount }: { selectedStep: number; onSelect: (index: number) => void; runtimeErrorCount: number }) {
-  const selectedSource = appMapSteps[selectedStep];
+function SourceCodeWorkspace({ project, steps, selectedStep, onSelect, runtimeErrorCount }: { project: ImportedProject; steps: readonly ProjectWorkflowStep[]; selectedStep: number; onSelect: (index: number) => void; runtimeErrorCount: number }) {
+  const selectedSource = steps[selectedStep];
   const codeLines = selectedSource.code.split("\n");
-  const selectedSourceHasError = runtimeErrorCount > 0 && selectedSource.filePath === "lib/pricing.ts";
+  const selectedSourceHasError = project.source === "demo" && runtimeErrorCount > 0 && selectedSource.filePath === "lib/pricing.ts";
 
   return (
     <section className={`source-workspace${selectedSourceHasError ? " error-file" : ""}`} id="app-map-source-workspace" aria-labelledby="source-workspace-title" aria-live="polite">
@@ -1284,22 +1378,22 @@ function SourceCodeWorkspace({ selectedStep, onSelect, runtimeErrorCount }: { se
       <div className="source-workspace-body">
         <nav className="source-file-list" aria-label="Files in this application flow">
           <span>FLOW FILES</span>
-          {appMapSteps.map((step, index) => (
+          {steps.map((step, index) => (
             <button
               type="button"
               key={step.filePath}
-              className={`${selectedStep === index ? "active" : ""}${runtimeErrorCount > 0 && step.filePath === "lib/pricing.ts" ? " has-error" : ""}`.trim()}
+              className={`${selectedStep === index ? "active" : ""}${project.source === "demo" && runtimeErrorCount > 0 && step.filePath === "lib/pricing.ts" ? " has-error" : ""}`.trim()}
               onClick={() => onSelect(index)}
               aria-current={selectedStep === index ? "page" : undefined}
             >
-              <i aria-hidden="true">{runtimeErrorCount > 0 && step.filePath === "lib/pricing.ts" ? "!" : "TS"}</i><span><strong>{step.fileName}</strong><small>{runtimeErrorCount > 0 && step.filePath === "lib/pricing.ts" ? "Runtime error" : `Step ${index + 1}`}</small></span>
+              <i aria-hidden="true">{project.source === "demo" && runtimeErrorCount > 0 && step.filePath === "lib/pricing.ts" ? "!" : "{}"}</i><span><strong>{step.fileName}</strong><small>{project.source === "demo" && runtimeErrorCount > 0 && step.filePath === "lib/pricing.ts" ? "Runtime error" : `Step ${index + 1}`}</small></span>
             </button>
           ))}
         </nav>
 
         <div className="source-editor" aria-label={`Read-only source code for ${selectedSource.fileName}`}>
           <div className={`source-editor-tab${selectedSourceHasError ? " error" : ""}`}><span aria-hidden="true">{selectedSourceHasError ? "!" : "TS"}</span><strong>{selectedSource.fileName}</strong><small>{selectedSourceHasError ? "Runtime error" : "Read only"}</small></div>
-          <div className="source-editor-breadcrumb">ShopSpring <b aria-hidden="true">›</b> {selectedSource.filePath}</div>
+          <div className="source-editor-breadcrumb">{project.name} <b aria-hidden="true">›</b> {selectedSource.filePath}</div>
           <div className="source-code" role="region" aria-label="Source code" tabIndex={0}>
             {codeLines.map((line, index) => {
               const lineNumber = index + 1;
@@ -1538,12 +1632,18 @@ function SafetyTests({ results, shippingFee, project }: { results: ReturnType<ty
   const [filter, setFilter] = useState<SafetyFilter>("all");
   const [query, setQuery] = useState("");
   const secretExposureFinding = useMemo(() => createSecretExposureFinding(project), [project]);
+  const baseFindings = useMemo(
+    () => project.source === "demo" ? safetyFindingsByPriority : [...(project.analysis?.findings ?? [])].sort(
+      (left, right) => safetySeverityPriority[left.severity] - safetySeverityPriority[right.severity],
+    ),
+    [project],
+  );
   const projectFindings = useMemo(
-    () => secretExposureFinding ? [secretExposureFinding, ...safetyFindingsByPriority] : safetyFindingsByPriority,
-    [secretExposureFinding],
+    () => secretExposureFinding ? [secretExposureFinding, ...baseFindings] : baseFindings,
+    [baseFindings, secretExposureFinding],
   );
   const [selectedFindingId, setSelectedFindingId] = useState(
-    () => secretExposureFinding?.id ?? safetyFindingsByPriority[0].id,
+    () => secretExposureFinding?.id ?? baseFindings[0]?.id ?? "",
   );
   const normalizedQuery = query.trim().toLowerCase();
   const filteredFindings = useMemo(() => projectFindings.filter((finding) => {
@@ -1567,11 +1667,11 @@ function SafetyTests({ results, shippingFee, project }: { results: ReturnType<ty
     <div className="tests-layout safety-review-layout">
       <section className="panel test-list-panel safety-findings-panel">
         <div className="safety-review-heading">
-          <div><span className="section-kicker">SYSTEM-WIDE SAFETY REVIEW</span><h2>Errors and security risks across the application</h2><p>Business behavior, APIs, trust boundaries, abuse controls, payments, and resilience are reviewed together.</p></div>
-          <span className="review-scope-pill">Guided architecture review</span>
+          <div><span className="section-kicker">SYSTEM-WIDE SAFETY REVIEW</span><h2>Errors and security risks across {project.name}</h2><p>{project.source === "demo" ? "Business behavior, APIs, trust boundaries, abuse controls, payments, and resilience are reviewed together." : "Only privacy-boundary results and high-confidence patterns found in this project’s approved source are shown here."}</p></div>
+          <span className="review-scope-pill">{project.source === "demo" ? "Guided architecture review" : "Source-backed review"}</span>
         </div>
 
-        <div className="safety-review-boundary" role="note"><span aria-hidden="true">i</span><p><strong>What is real in this prototype?</strong>The import privacy check uses path metadata and .gitignore rules without opening secret files, and the pricing boundary test executes the bundled ShopSpring function. Security findings are guided code-review examples based on the sample architecture.</p></div>
+        <div className="safety-review-boundary" role="note"><span aria-hidden="true">i</span><p><strong>What was checked?</strong>{project.source === "demo" ? "The pricing boundary test executes the bundled ShopSpring function, while security findings illustrate the sample architecture." : `${project.analysis?.analyzedFileCount ?? 0} approved source files were scanned locally after .gitignore and secret-path exclusions. Imported code was not executed, and these results do not claim to replace a build, dependency audit, or penetration test.`}</p></div>
 
         <div className="safety-sort-note" role="note"><span aria-hidden="true">↓</span><p><strong>Highest priority first.</strong> Critical risks appear before high and medium findings; verified protections stay at the bottom.</p></div>
 

@@ -1,4 +1,5 @@
 import ignore from "ignore";
+import { analyzeProjectSources, type ProjectAnalysis, type SafeSourceDocument } from "./project-analysis.ts";
 
 export type ProjectSource = "demo" | "local" | "google-drive" | "github";
 
@@ -9,6 +10,7 @@ export type ImportedProject = {
   sourceLabel: string;
   cacheKey?: string;
   privacy?: ProjectPrivacySummary;
+  analysis?: ProjectAnalysis;
 };
 
 export type ProjectPrivacySummary = {
@@ -115,8 +117,7 @@ export async function summarizeProjectFilesSafely(files: FileList | File[]) {
     const path = projectRelativePath(file.webkitRelativePath || file.name);
     if (path.split("/").at(-1)?.toLowerCase() !== ".gitignore") continue;
 
-    // The ignore policy is the only project file read at import time. Secret,
-    // environment, and source-file content remains unopened.
+    // Ignore policies are resolved before any source content is considered.
     const policyText = await file.text();
     policies.push(createGitignorePolicy(path, policyText));
   }
@@ -139,11 +140,38 @@ export async function summarizeProjectFilesSafely(files: FileList | File[]) {
     }
   }
 
+  const documents: SafeSourceDocument[] = [];
+  let contentBudget = 1_500_000;
+  const prioritizedFiles = projectFiles
+    .map((file) => ({ file, path: projectRelativePath(file.webkitRelativePath || file.name) }))
+    .filter(({ file, path }) => includedPaths.has(path) && file.size <= 180_000)
+    .sort((left, right) => sourceAnalysisPriority(left.path) - sourceAnalysisPriority(right.path));
+
+  for (const { file, path } of prioritizedFiles) {
+    if (documents.length >= 80 || contentBudget <= 0) break;
+    const content = (await file.text()).slice(0, Math.min(180_000, contentBudget));
+    contentBudget -= content.length;
+    documents.push({ path, content });
+  }
+
+  const name = projectNameFromFiles(projectFiles);
+
   return {
     fileCount: evaluation.sourcePaths.length,
     cacheKey: `local:${(fingerprint >>> 0).toString(36)}:${evaluation.sourcePaths.length}:${evaluation.privacy.exposedSecretFileCount}`,
     privacy: evaluation.privacy,
+    analysis: analyzeProjectSources({ name, sourcePaths: evaluation.sourcePaths, documents }),
   };
+}
+
+export function sourceAnalysisPriority(path: string) {
+  const normalized = path.toLowerCase();
+  if (normalized.endsWith("package.json")) return 0;
+  if (/(^|\/)(app|pages|routes)\/.*(page|route|index)\.(tsx?|jsx?|vue|html)$/.test(normalized)) return 1;
+  if (/(^|\/)(index|app|main|home)\.(tsx?|jsx?|vue|html)$/.test(normalized)) return 2;
+  if (/\.(tsx?|jsx?|vue|html)$/.test(normalized)) return 3;
+  if (/\.(css|scss)$/.test(normalized)) return 4;
+  return 5;
 }
 
 export function createGitignorePolicy(gitignorePath: string, contents: string): GitignorePolicy {

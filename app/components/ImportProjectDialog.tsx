@@ -7,11 +7,13 @@ import {
   evaluateProjectPaths,
   parseGitHubRepositoryUrl,
   projectNameFromFiles,
+  sourceAnalysisPriority,
   summarizeProjectFilesSafely,
   type GitignorePolicy,
   type ImportedProject,
   type ProjectSource,
 } from "@/lib/import-sources";
+import { analyzeProjectSources, type SafeSourceDocument } from "@/lib/project-analysis";
 
 type ImportSource = Exclude<ProjectSource, "demo">;
 
@@ -97,7 +99,7 @@ export function ImportProjectDialog({
     await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
 
     try {
-      const { fileCount, cacheKey, privacy } = await summarizeProjectFilesSafely(files);
+      const { fileCount, cacheKey, privacy, analysis } = await summarizeProjectFilesSafely(files);
       if (!fileCount) {
         setError("That folder does not contain supported source files after privacy exclusions were applied.");
         return;
@@ -110,6 +112,7 @@ export function ImportProjectDialog({
         sourceLabel: "Local folder",
         cacheKey,
         privacy,
+        analysis,
       });
     } catch {
       setError("VCAIST could not verify this folder's privacy rules, so no project files were analyzed.");
@@ -149,7 +152,7 @@ export function ImportProjectDialog({
       if (!treeResponse.ok) throwGitHubError(treeResponse.status);
       const treeData = (await treeResponse.json()) as {
         sha?: string;
-        tree: Array<{ path: string; type: string; sha?: string }>;
+        tree: Array<{ path: string; type: string; sha?: string; size?: number }>;
         truncated?: boolean;
       };
       if (treeData.truncated) {
@@ -160,14 +163,23 @@ export function ImportProjectDialog({
       const evaluation = evaluateProjectPaths(blobEntries.map((item) => item.path), policies);
       const fileCount = evaluation.sourcePaths.length;
       if (!fileCount) throw new Error("No supported source files were found in that repository.");
+      const name = cleanProjectName(repoData.name);
+      const documents = await loadGitHubSourceDocuments(
+        repository.owner,
+        repository.repo,
+        blobEntries,
+        evaluation.sourcePaths,
+        headers,
+      );
 
       onImport({
-        name: cleanProjectName(repoData.name),
+        name,
         fileCount,
         source: "github",
         sourceLabel: "GitHub",
         cacheKey: `github:${repository.owner}/${repository.repo}:${treeData.sha ?? repoData.default_branch}:${fileCount}`,
         privacy: evaluation.privacy,
+        analysis: analyzeProjectSources({ name, sourcePaths: evaluation.sourcePaths, documents }),
       });
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "GitHub could not be reached.");
@@ -189,7 +201,7 @@ export function ImportProjectDialog({
     try {
       const picked = await chooseGoogleDriveFolder();
       if (!picked) return;
-      const { fileCount, privacy } = await countGoogleDriveSourceFiles(picked.id, picked.accessToken);
+      const { fileCount, privacy, analysis } = await countGoogleDriveSourceFiles(picked.id, picked.name, picked.accessToken);
       if (!fileCount) throw new Error("That Drive folder does not contain supported source files.");
 
       onImport({
@@ -199,6 +211,7 @@ export function ImportProjectDialog({
         sourceLabel: "Google Drive",
         cacheKey: `google-drive:${picked.id}:${fileCount}`,
         privacy,
+        analysis,
       });
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Google Drive could not be reached.");
@@ -353,6 +366,37 @@ function decodeBase64Text(value: string) {
   return new TextDecoder().decode(bytes);
 }
 
+async function loadGitHubSourceDocuments(
+  owner: string,
+  repository: string,
+  entries: Array<{ path: string; sha?: string; size?: number }>,
+  sourcePaths: readonly string[],
+  headers: Record<string, string>,
+) {
+  const approvedPaths = new Set(sourcePaths);
+  const candidates = entries
+    .filter((entry) => approvedPaths.has(entry.path) && entry.sha && (entry.size ?? 0) <= 180_000)
+    .sort((left, right) => sourceAnalysisPriority(left.path) - sourceAnalysisPriority(right.path))
+    .slice(0, 80);
+  const documents: SafeSourceDocument[] = [];
+  let contentBudget = 1_500_000;
+
+  for (const entry of candidates) {
+    if (contentBudget <= 0 || !entry.sha) break;
+    const response = await fetch(
+      `https://api.github.com/repos/${owner}/${repository}/git/blobs/${encodeURIComponent(entry.sha)}`,
+      { headers },
+    );
+    if (!response.ok) continue;
+    const data = (await response.json()) as { content?: string; encoding?: string };
+    if (data.encoding !== "base64" || typeof data.content !== "string") continue;
+    const content = decodeBase64Text(data.content).slice(0, Math.min(180_000, contentBudget));
+    contentBudget -= content.length;
+    documents.push({ path: entry.path, content });
+  }
+  return documents;
+}
+
 function loadExternalScript(src: string, id: string) {
   const existing = document.getElementById(id) as HTMLScriptElement | null;
   if (existing?.dataset.loaded === "true") return Promise.resolve();
@@ -457,10 +501,10 @@ async function chooseGoogleDriveFolder() {
   });
 }
 
-async function countGoogleDriveSourceFiles(rootFolderId: string, accessToken: string) {
+async function countGoogleDriveSourceFiles(rootFolderId: string, projectName: string, accessToken: string) {
   const folderMimeType = "application/vnd.google-apps.folder";
   const pendingFolders = [{ id: rootFolderId, path: "" }];
-  const projectFiles: Array<{ id: string; path: string }> = [];
+  const projectFiles: Array<{ id: string; path: string; size: number }> = [];
   let inspectedItems = 0;
 
   while (pendingFolders.length && inspectedItems < 2000) {
@@ -471,7 +515,7 @@ async function countGoogleDriveSourceFiles(rootFolderId: string, accessToken: st
     do {
       const query = `'${folder.id.replaceAll("'", "\\'")}' in parents and trashed = false`;
       const params = new URLSearchParams({
-        fields: "nextPageToken,files(id,name,mimeType)",
+        fields: "nextPageToken,files(id,name,mimeType,size)",
         includeItemsFromAllDrives: "true",
         pageSize: "1000",
         q: query,
@@ -483,7 +527,7 @@ async function countGoogleDriveSourceFiles(rootFolderId: string, accessToken: st
       });
       if (!response.ok) throw new Error("Google Drive could not list that folder.");
       const data = (await response.json()) as {
-        files?: Array<{ id: string; name: string; mimeType: string }>;
+        files?: Array<{ id: string; name: string; mimeType: string; size?: string }>;
         nextPageToken?: string;
       };
 
@@ -491,7 +535,7 @@ async function countGoogleDriveSourceFiles(rootFolderId: string, accessToken: st
         inspectedItems += 1;
         const path = folder.path ? `${folder.path}/${item.name}` : item.name;
         if (item.mimeType === folderMimeType) pendingFolders.push({ id: item.id, path });
-        else projectFiles.push({ id: item.id, path });
+        else projectFiles.push({ id: item.id, path, size: Number(item.size ?? 0) });
         if (inspectedItems >= 2000) break;
       }
       pageToken = data.nextPageToken ?? "";
@@ -514,5 +558,26 @@ async function countGoogleDriveSourceFiles(rootFolderId: string, accessToken: st
   }
 
   const evaluation = evaluateProjectPaths(projectFiles.map((file) => file.path), policies);
-  return { fileCount: evaluation.sourcePaths.length, privacy: evaluation.privacy };
+  const approvedPaths = new Set(evaluation.sourcePaths);
+  const candidates = projectFiles
+    .filter((file) => approvedPaths.has(file.path) && file.size <= 180_000)
+    .sort((left, right) => sourceAnalysisPriority(left.path) - sourceAnalysisPriority(right.path))
+    .slice(0, 80);
+  const documents: SafeSourceDocument[] = [];
+  let contentBudget = 1_500_000;
+  for (const file of candidates) {
+    if (contentBudget <= 0) break;
+    const response = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(file.id)}?alt=media`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!response.ok) continue;
+    const content = (await response.text()).slice(0, Math.min(180_000, contentBudget));
+    contentBudget -= content.length;
+    documents.push({ path: file.path, content });
+  }
+  return {
+    fileCount: evaluation.sourcePaths.length,
+    privacy: evaluation.privacy,
+    analysis: analyzeProjectSources({ name: cleanProjectName(projectName), sourcePaths: evaluation.sourcePaths, documents }),
+  };
 }

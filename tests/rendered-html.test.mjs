@@ -15,7 +15,9 @@ import {
   isSourcePath,
   parseGitHubRepositoryUrl,
   summarizeProjectFiles,
+  summarizeProjectFilesSafely,
 } from "../lib/import-sources.ts";
+import { analyzeProjectSources } from "../lib/project-analysis.ts";
 import {
   defaultPreferences,
   modelOptions,
@@ -24,6 +26,57 @@ import {
 import { modelRegistry } from "../lib/ai/model-registry.ts";
 
 const templateRoot = new URL("../", import.meta.url);
+
+test("builds a portfolio manifest instead of reusing the financial demo", () => {
+  const analysis = analyzeProjectSources({
+    name: "Personal Portfolio Website",
+    sourcePaths: ["package.json", "src/App.tsx"],
+    documents: [
+      { path: "package.json", content: '{"dependencies":{"react":"19","vite":"7"}}' },
+      {
+        path: "src/App.tsx",
+        content: `<nav><a href="#projects">Projects</a><a href="#contact">Contact</a></nav>
+          <main><h1>Zavier Portfolio</h1><section id="projects"><h2>Selected Work</h2></section>
+          <section id="contact"><h2>Contact Me</h2></section></main>`,
+      },
+    ],
+  });
+
+  assert.equal(analysis.kind, "portfolio");
+  assert.equal(analysis.framework, "React + Vite");
+  assert.deepEqual(analysis.pages.map((page) => page.route), ["/", "/#contact", "/#projects"]);
+  assert.ok(analysis.entities.some((entity) => entity.name === "Project"));
+  assert.ok(analysis.workflow.every((step) => step.filePath === "src/App.tsx"));
+  assert.doesNotMatch(JSON.stringify(analysis), /ShopSpring|checkout|shopping cart|Stripe/i);
+});
+
+test("reads only approved source after privacy exclusions", async () => {
+  const reads = new Map();
+  const file = (path, content) => ({
+    name: path.split("/").at(-1),
+    webkitRelativePath: `Portfolio/${path}`,
+    size: content.length,
+    lastModified: 1,
+    async text() {
+      reads.set(path, (reads.get(path) ?? 0) + 1);
+      return content;
+    },
+  });
+  const summary = await summarizeProjectFilesSafely([
+    file(".gitignore", ".env.local\nsrc/ignored.ts\n"),
+    file(".env.local", "OPENAI_API_KEY=must-not-be-read"),
+    file("src/ignored.ts", "const privateDraft = true"),
+    file("src/App.tsx", "<main><h1>My Portfolio</h1><section id=\"projects\"><h2>Projects</h2></section></main>"),
+    file("package.json", '{"dependencies":{"react":"19","vite":"7"}}'),
+  ]);
+
+  assert.equal(reads.get(".gitignore"), 1);
+  assert.equal(reads.has(".env.local"), false);
+  assert.equal(reads.has("src/ignored.ts"), false);
+  assert.equal(reads.get("src/App.tsx"), 1);
+  assert.equal(summary.analysis.kind, "portfolio");
+  assert.deepEqual(summary.analysis.indexedFilePaths.sort(), ["package.json", "src/App.tsx"]);
+});
 
 async function render(pathname = "/") {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
@@ -261,8 +314,8 @@ test("explains every workspace view immediately below its tab", async () => {
   assert.match(source, /Follow the workflow, source code, and data relationships/);
   assert.match(source, /Review safety from customer input to system architecture/);
   assert.match(source, /<WorkspaceViewIntroduction view=\{view\} \/>/);
-  assert.match(source, /<WorkspaceViewIntroduction view=\{view\} \/> : null\}\s*\{projectReady && view === "overview" \? <ProgramOverview \/> : null\}\s*\{projectConnected \?/);
-  assert.equal(source.match(/<ProgramOverview \/>/g)?.length, 1);
+  assert.match(source, /<WorkspaceViewIntroduction view=\{view\} \/> : null\}\s*\{projectReady && view === "overview" \? <ProgramOverview project=\{project\} \/> : null\}\s*\{projectConnected \?/);
+  assert.equal(source.match(/<ProgramOverview project=\{project\} \/>/g)?.length, 1);
 });
 
 test("keeps workspace page tabs free of confusing numeric badges", async () => {
@@ -316,7 +369,7 @@ test("opens App Map steps in a read-only source workspace", async () => {
   assert.match(source, /Inspect workflow source, read the entity relationship diagram/);
   assert.match(source, /className=\{`flow-step\$\{selectedStep === index \? " selected" : ""\}\$\{hasRuntimeError \? " error" : ""\}`\}/);
   assert.match(source, /onClick=\{\(\) => setSelectedStep\(index\)\}/);
-  assert.match(source, /<SourceCodeWorkspace selectedStep=\{selectedStep\} onSelect=\{setSelectedStep\} runtimeErrorCount=\{runtimeErrorCount\} \/>/);
+  assert.match(source, /<SourceCodeWorkspace project=\{project\} steps=\{steps\} selectedStep=\{selectedStep\} onSelect=\{setSelectedStep\} runtimeErrorCount=\{runtimeErrorCount\} \/>/);
   assert.match(source, /CartPage\.tsx[\s\S]*pricing\.ts[\s\S]*route\.ts[\s\S]*stripe\.ts/);
   assert.match(source, /This workspace can inspect files, but it cannot edit or save them/);
   assert.match(css, /\.source-workspace \{[\s\S]*?background: var\(--surface-soft\);/);
@@ -328,8 +381,9 @@ test("shows a simple ERD and directs red-highlighted program errors to Safety Te
   const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
   assert.match(source, /What is an entity relationship diagram\?/);
   assert.match(source, /Rectangles are entities[\s\S]*diamonds are relationships[\s\S]*ovals are important attributes/);
-  assert.match(source, /<ChenEntity name="Customer"[\s\S]*<ChenEntity name="Order"[\s\S]*<ChenEntity name="Order Item"[\s\S]*<ChenEntity name="Product"/);
-  assert.match(source, /<ChenRelationship fromCount="1" name="places" toCount="M"[\s\S]*name="contains"[\s\S]*name="references"/);
+  assert.match(source, /name: "Customer"[\s\S]*name: "Order"[\s\S]*name: "Order Item"[\s\S]*name: "Product"/);
+  assert.match(source, /name: "places"[\s\S]*name: "contains"[\s\S]*name: "references"/);
+  assert.match(source, /relationships\.map[\s\S]*<ChenEntity name=\{from\.name\}[\s\S]*<ChenRelationship[\s\S]*<ChenEntity name=\{to\.name\}/);
   assert.doesNotMatch(source, /ENTITY DICTIONARY/);
   assert.doesNotMatch(source, /appEntities\.map/);
   assert.match(source, /PROGRAM ERROR DETECTED/);
@@ -363,7 +417,8 @@ test("presents system-wide safety and security findings as an interactive list",
   assert.match(source, /placeholder="Search risks or systems"/);
   assert.match(source, /onClick=\{\(\) => setSelectedFindingId\(finding\.id\)\}/);
   assert.match(source, /HOW VCAIST CHECKED[\s\S]*EVIDENCE[\s\S]*FAILURE OR ATTACK SCENARIO[\s\S]*BUSINESS AND SYSTEM IMPACT/);
-  assert.match(source, /Security findings are guided code-review examples/);
+  assert.match(source, /Only privacy-boundary results and high-confidence patterns found in this project/);
+  assert.match(source, /Imported code was not executed/);
   assert.match(source, /safetySeverityPriority\[left\.severity\] - safetySeverityPriority\[right\.severity\]/);
   assert.match(source, /Highest priority first/);
   assert.match(source, /Critical risks appear before high and medium findings; verified protections stay at the bottom/);
