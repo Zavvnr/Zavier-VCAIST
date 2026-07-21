@@ -1,8 +1,22 @@
 # VCAIST
 
-VCAIST is a plain-English code-intelligence platform for people who own an app but do not want to become software engineers to understand it.
+VCAIST is a plain-English code-intelligence platform for people who own an app but do not want to become software engineers to understand it or have litle understanding of software engineering. Because of that, the platform is more suited toward small-scale projects where codes are simply organized and explainable.
 
-The current prototype demonstrates a safe application-understanding loop with a sample commerce app: connect project files, browse the application interface, compare it with another selected project, inspect its workflow and data model, and reveal a real edge-case defect in understandable terms.
+The current platform demonstrates a safe application-understanding loop with a sample commerce app: connect project files, browse the application interface, compare it with another selected project, inspect its workflow and data model, and reveal a real edge-case defect in understandable terms.
+
+The project is accessible at: https://vcaist-platform.vercel.app/
+
+Demo video: 
+
+## Acknowledgement
+
+This project is built under OpenAI Build Week Challenge July, 13 - July, 21 2026. Per requirements, it uses Codex with GPT 5.6 and licensed under MIT License. This project falls under the **Developer Tools** category.
+
+### Codex & GPT 5.6
+
+The project used OpenAI Codex, specifically the GPT 5.6-sol ultracode. Key decisions that include product, engineering, and design decisions were made by the author. The author then used Codex to accelerate the development of the platform (i.e. code the platform, test it, then deploy the platform to the public). Multiple iterations of requests were made to ensure that the platform works as intended.
+
+Codex session id: 019f6e34-3f19-7a11-b57e-9dd4dfcc0fa4
 
 ## What it does
 
@@ -24,6 +38,23 @@ The current prototype demonstrates a safe application-understanding loop with a 
 - Git, if you plan to contribute changes
 
 ### Local setup
+
+To test the platform locally, please provide below environment variables in .env.local:
+You need to provide at least one of them, but the models that will be working will be the ones associated with the API key:
+- OPENAI_API_KEY
+- ANTHROPIC_API_KEY
+- GEMINI_API_KEY
+- DASHSCOPE_API_KEY
+- MOONSHOT_API_KEY
+
+Please provide a default model of your choice:
+- DEFAULT_AI_MODEL
+
+For authentication purposes:
+- NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+- CLERK_SECRET_KEY
+
+You do not need to provide the vercel API key
 
 This is a Node.js application, so its virtual environment is the pinned Node runtime plus the project-local `node_modules` directory. It does not need a Python `.venv`.
 
