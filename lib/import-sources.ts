@@ -1,3 +1,5 @@
+import ignore from "ignore";
+
 export type ProjectSource = "demo" | "local" | "google-drive" | "github";
 
 export type ImportedProject = {
@@ -6,6 +8,19 @@ export type ImportedProject = {
   source: ProjectSource;
   sourceLabel: string;
   cacheKey?: string;
+  privacy?: ProjectPrivacySummary;
+};
+
+export type ProjectPrivacySummary = {
+  policyStatus: "enforced";
+  gitignoreRuleCount: number;
+  excludedFileCount: number;
+  exposedSecretFileCount: number;
+};
+
+export type GitignorePolicy = {
+  basePath: string;
+  patterns: readonly string[];
 };
 
 const sourceExtensions = new Set([
@@ -90,6 +105,123 @@ export function summarizeProjectFiles(files: FileList | File[]) {
     fileCount,
     cacheKey: `local:${(fingerprint >>> 0).toString(36)}:${fileCount}`,
   };
+}
+
+export async function summarizeProjectFilesSafely(files: FileList | File[]) {
+  const projectFiles = Array.from(files);
+  const policies: GitignorePolicy[] = [];
+
+  for (const file of projectFiles) {
+    const path = projectRelativePath(file.webkitRelativePath || file.name);
+    if (path.split("/").at(-1)?.toLowerCase() !== ".gitignore") continue;
+
+    // The ignore policy is the only project file read at import time. Secret,
+    // environment, and source-file content remains unopened.
+    const policyText = await file.text();
+    policies.push(createGitignorePolicy(path, policyText));
+  }
+
+  const descriptors = projectFiles.map((file) => ({
+    path: projectRelativePath(file.webkitRelativePath || file.name),
+    size: file.size,
+    lastModified: file.lastModified,
+  }));
+  const evaluation = evaluateProjectPaths(descriptors.map((file) => file.path), policies);
+  const includedPaths = new Set(evaluation.sourcePaths);
+  let fingerprint = 2166136261;
+
+  for (const file of descriptors) {
+    if (!includedPaths.has(file.path)) continue;
+    const descriptor = `${file.path}:${file.size}:${file.lastModified}|`;
+    for (let index = 0; index < descriptor.length; index += 1) {
+      fingerprint ^= descriptor.charCodeAt(index);
+      fingerprint = Math.imul(fingerprint, 16777619);
+    }
+  }
+
+  return {
+    fileCount: evaluation.sourcePaths.length,
+    cacheKey: `local:${(fingerprint >>> 0).toString(36)}:${evaluation.sourcePaths.length}:${evaluation.privacy.exposedSecretFileCount}`,
+    privacy: evaluation.privacy,
+  };
+}
+
+export function createGitignorePolicy(gitignorePath: string, contents: string): GitignorePolicy {
+  const normalizedPath = normalizeProjectPath(gitignorePath);
+  const lastSlash = normalizedPath.lastIndexOf("/");
+  const basePath = lastSlash >= 0 ? normalizedPath.slice(0, lastSlash) : "";
+  const patterns = contents
+    .split(/\r?\n/)
+    .filter((line) => line.trim() && !line.startsWith("#") && !line.startsWith("!"));
+
+  return { basePath, patterns };
+}
+
+export function evaluateProjectPaths(paths: readonly string[], policies: readonly GitignorePolicy[]) {
+  const sourcePaths: string[] = [];
+  let excludedFileCount = 0;
+  let exposedSecretFileCount = 0;
+
+  for (const rawPath of paths) {
+    const path = normalizeProjectPath(rawPath);
+    if (!path || path.split("/").at(-1)?.toLowerCase() === ".gitignore") continue;
+
+    const sensitive = isSensitiveProjectPath(path);
+    const ignored = policies.some((policy) => isIgnoredByPolicy(path, policy));
+    if (sensitive) {
+      excludedFileCount += 1;
+      if (!ignored) exposedSecretFileCount += 1;
+      continue;
+    }
+    if (ignored) {
+      excludedFileCount += 1;
+      continue;
+    }
+    if (isSourcePath(path)) sourcePaths.push(path);
+  }
+
+  return {
+    sourcePaths,
+    privacy: {
+      policyStatus: "enforced" as const,
+      gitignoreRuleCount: policies.reduce((total, policy) => total + policy.patterns.length, 0),
+      excludedFileCount,
+      exposedSecretFileCount,
+    },
+  };
+}
+
+export function isSensitiveProjectPath(rawPath: string) {
+  const path = normalizeProjectPath(rawPath).toLowerCase();
+  const segments = path.split("/").filter(Boolean);
+  const fileName = segments.at(-1) ?? "";
+
+  if (fileName === ".env" || fileName.startsWith(".env.") || fileName.endsWith(".env")) return true;
+  if (fileName === ".dev.vars" || fileName.startsWith(".dev.vars.")) return true;
+  if ([".npmrc", ".pypirc", ".netrc", "credentials", "credentials.json", "secrets.json"].includes(fileName)) return true;
+  if (/^(id_rsa|id_ed25519)(\.pub)?$/.test(fileName)) return true;
+  if (/\.(pem|key|p12|pfx|jks|keystore)$/.test(fileName)) return true;
+  if (/(^|[._-])(secret|secrets|credential|credentials|service-account|firebase-adminsdk)([._-]|$)/.test(fileName)) return true;
+  if (segments.includes(".aws") && fileName === "credentials") return true;
+  if (segments.includes(".ssh") && !fileName.endsWith(".pub")) return true;
+  return false;
+}
+
+function isIgnoredByPolicy(path: string, policy: GitignorePolicy) {
+  if (policy.basePath && path !== policy.basePath && !path.startsWith(`${policy.basePath}/`)) return false;
+  const relativePath = policy.basePath ? path.slice(policy.basePath.length + 1) : path;
+  if (!relativePath || !policy.patterns.length) return false;
+  return ignore().add(policy.patterns).ignores(relativePath);
+}
+
+function projectRelativePath(rawPath: string) {
+  const normalized = normalizeProjectPath(rawPath);
+  const segments = normalized.split("/").filter(Boolean);
+  return segments.length > 1 ? segments.slice(1).join("/") : normalized;
+}
+
+function normalizeProjectPath(path: string) {
+  return path.replaceAll("\\", "/").replace(/^\.\//, "").replace(/^\/+|\/+$/g, "");
 }
 
 export function parseGitHubRepositoryUrl(value: string) {

@@ -3,10 +3,12 @@
 import { useEffect, useRef, useState, type ChangeEvent, type InputHTMLAttributes } from "react";
 import {
   cleanProjectName,
-  isSourcePath,
+  createGitignorePolicy,
+  evaluateProjectPaths,
   parseGitHubRepositoryUrl,
   projectNameFromFiles,
-  summarizeProjectFiles,
+  summarizeProjectFilesSafely,
+  type GitignorePolicy,
   type ImportedProject,
   type ProjectSource,
 } from "@/lib/import-sources";
@@ -94,21 +96,26 @@ export function ImportProjectDialog({
     setError("");
     await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
 
-    const { fileCount, cacheKey } = summarizeProjectFiles(files);
-    if (!fileCount) {
-      setBusy(false);
-      setError("That folder does not contain supported source files.");
-      return;
-    }
+    try {
+      const { fileCount, cacheKey, privacy } = await summarizeProjectFilesSafely(files);
+      if (!fileCount) {
+        setError("That folder does not contain supported source files after privacy exclusions were applied.");
+        return;
+      }
 
-    setBusy(false);
-    onImport({
-      name: projectNameFromFiles(files),
-      fileCount,
-      source: "local",
-      sourceLabel: "Local folder",
-      cacheKey,
-    });
+      onImport({
+        name: projectNameFromFiles(files),
+        fileCount,
+        source: "local",
+        sourceLabel: "Local folder",
+        cacheKey,
+        privacy,
+      });
+    } catch {
+      setError("VCAIST could not verify this folder's privacy rules, so no project files were analyzed.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function importGitHubRepository() {
@@ -142,20 +149,25 @@ export function ImportProjectDialog({
       if (!treeResponse.ok) throwGitHubError(treeResponse.status);
       const treeData = (await treeResponse.json()) as {
         sha?: string;
-        tree: Array<{ path: string; type: string }>;
+        tree: Array<{ path: string; type: string; sha?: string }>;
         truncated?: boolean;
       };
-      const fileCount = treeData.tree.filter(
-        (item) => item.type === "blob" && isSourcePath(item.path),
-      ).length;
+      if (treeData.truncated) {
+        throw new Error("This repository is too large to verify every .gitignore policy safely.");
+      }
+      const blobEntries = treeData.tree.filter((item) => item.type === "blob");
+      const policies = await loadGitHubIgnorePolicies(repository.owner, repository.repo, blobEntries, headers);
+      const evaluation = evaluateProjectPaths(blobEntries.map((item) => item.path), policies);
+      const fileCount = evaluation.sourcePaths.length;
       if (!fileCount) throw new Error("No supported source files were found in that repository.");
 
       onImport({
         name: cleanProjectName(repoData.name),
         fileCount,
         source: "github",
-        sourceLabel: treeData.truncated ? "GitHub · large repository" : "GitHub",
+        sourceLabel: "GitHub",
         cacheKey: `github:${repository.owner}/${repository.repo}:${treeData.sha ?? repoData.default_branch}:${fileCount}`,
+        privacy: evaluation.privacy,
       });
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "GitHub could not be reached.");
@@ -177,7 +189,7 @@ export function ImportProjectDialog({
     try {
       const picked = await chooseGoogleDriveFolder();
       if (!picked) return;
-      const fileCount = await countGoogleDriveSourceFiles(picked.id, picked.accessToken);
+      const { fileCount, privacy } = await countGoogleDriveSourceFiles(picked.id, picked.accessToken);
       if (!fileCount) throw new Error("That Drive folder does not contain supported source files.");
 
       onImport({
@@ -186,6 +198,7 @@ export function ImportProjectDialog({
         source: "google-drive",
         sourceLabel: "Google Drive",
         cacheKey: `google-drive:${picked.id}:${fileCount}`,
+        privacy,
       });
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Google Drive could not be reached.");
@@ -245,8 +258,8 @@ export function ImportProjectDialog({
               <div>
                 <h3>{busy ? "Indexing your folder…" : "Choose a project folder"}</h3>
                 <p>{busy
-                  ? "Counting supported source files and creating a private device cache."
-                  : "Source files stay in this browser session. Unchanged folders load faster next time."}</p>
+                  ? "Applying .gitignore rules and counting only approved source files."
+                  : "Environment files, secret files, and .gitignore exclusions are never opened."}</p>
               </div>
               <button className="button dark" onClick={() => folderInput.current?.click()} disabled={busy}>
                 {busy ? "Reading files…" : "Browse folders"}
@@ -258,7 +271,7 @@ export function ImportProjectDialog({
             <div className="remote-source-panel">
               <div className="remote-source-copy">
                 <span className="remote-logo github" aria-hidden="true">GH</span>
-                <div><h3>Import a public repository</h3><p>VCAIST reads the default branch and ignores generated folders.</p></div>
+                <div><h3>Import a public repository</h3><p>VCAIST applies .gitignore rules and blocks environment and secret files before analysis.</p></div>
               </div>
               <label className="import-field" htmlFor="github-repository">GitHub repository URL</label>
               <div className="url-input-row">
@@ -284,7 +297,7 @@ export function ImportProjectDialog({
             <div className="remote-source-panel drive-panel">
               <div className="remote-source-copy">
                 <span className="remote-logo drive" aria-hidden="true">△</span>
-                <div><h3>Choose a Google Drive folder</h3><p>Google asks for read-only access, then VCAIST lists supported source files.</p></div>
+                <div><h3>Choose a Google Drive folder</h3><p>Google asks for read-only access; VCAIST applies privacy rules before source analysis.</p></div>
               </div>
               <button className="button drive-button full" onClick={() => void importGoogleDriveFolder()} disabled={busy}>
                 <span aria-hidden="true">△</span>{busy ? "Connecting…" : "Continue with Google Drive"}
@@ -296,7 +309,7 @@ export function ImportProjectDialog({
           {error ? <div className="import-error" role="alert"><span aria-hidden="true">!</span>{error}</div> : null}
         </div>
 
-        <div className="import-footer"><span aria-hidden="true">✓</span>Nothing is changed in your project without approval.</div>
+        <div className="import-footer"><span aria-hidden="true">✓</span>Ignored environment and secret files are never inspected. Nothing is changed without approval.</div>
       </section>
     </div>
   );
@@ -306,6 +319,38 @@ function throwGitHubError(status: number): never {
   if (status === 404) throw new Error("Repository not found. Check that it is public and the URL is correct.");
   if (status === 403) throw new Error("GitHub's public request limit was reached. Try again in a few minutes.");
   throw new Error(`GitHub returned an unexpected response (${status}).`);
+}
+
+async function loadGitHubIgnorePolicies(
+  owner: string,
+  repository: string,
+  entries: Array<{ path: string; sha?: string }>,
+  headers: Record<string, string>,
+) {
+  const ignoreFiles = entries.filter((entry) => entry.path.split("/").at(-1)?.toLowerCase() === ".gitignore");
+  if (ignoreFiles.length > 50) throw new Error("This repository has too many ignore policies to verify safely.");
+
+  const policies: GitignorePolicy[] = [];
+  for (const ignoreFile of ignoreFiles) {
+    if (!ignoreFile.sha) throw new Error("VCAIST could not verify this repository's privacy rules.");
+    const response = await fetch(
+      `https://api.github.com/repos/${owner}/${repository}/git/blobs/${encodeURIComponent(ignoreFile.sha)}`,
+      { headers },
+    );
+    if (!response.ok) throw new Error("VCAIST could not verify this repository's privacy rules.");
+    const data = (await response.json()) as { content?: string; encoding?: string };
+    if (data.encoding !== "base64" || typeof data.content !== "string") {
+      throw new Error("VCAIST could not verify this repository's privacy rules.");
+    }
+    policies.push(createGitignorePolicy(ignoreFile.path, decodeBase64Text(data.content)));
+  }
+  return policies;
+}
+
+function decodeBase64Text(value: string) {
+  const binary = window.atob(value.replace(/\s/g, ""));
+  const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
 }
 
 function loadExternalScript(src: string, id: string) {
@@ -414,17 +459,17 @@ async function chooseGoogleDriveFolder() {
 
 async function countGoogleDriveSourceFiles(rootFolderId: string, accessToken: string) {
   const folderMimeType = "application/vnd.google-apps.folder";
-  const pendingFolders = [rootFolderId];
-  let sourceFiles = 0;
+  const pendingFolders = [{ id: rootFolderId, path: "" }];
+  const projectFiles: Array<{ id: string; path: string }> = [];
   let inspectedItems = 0;
 
   while (pendingFolders.length && inspectedItems < 2000) {
-    const folderId = pendingFolders.shift();
-    if (!folderId) break;
+    const folder = pendingFolders.shift();
+    if (!folder) break;
     let pageToken = "";
 
     do {
-      const query = `'${folderId.replaceAll("'", "\\'")}' in parents and trashed = false`;
+      const query = `'${folder.id.replaceAll("'", "\\'")}' in parents and trashed = false`;
       const params = new URLSearchParams({
         fields: "nextPageToken,files(id,name,mimeType)",
         includeItemsFromAllDrives: "true",
@@ -444,13 +489,30 @@ async function countGoogleDriveSourceFiles(rootFolderId: string, accessToken: st
 
       for (const item of data.files ?? []) {
         inspectedItems += 1;
-        if (item.mimeType === folderMimeType) pendingFolders.push(item.id);
-        else if (isSourcePath(item.name)) sourceFiles += 1;
+        const path = folder.path ? `${folder.path}/${item.name}` : item.name;
+        if (item.mimeType === folderMimeType) pendingFolders.push({ id: item.id, path });
+        else projectFiles.push({ id: item.id, path });
         if (inspectedItems >= 2000) break;
       }
       pageToken = data.nextPageToken ?? "";
     } while (pageToken && inspectedItems < 2000);
   }
 
-  return sourceFiles;
+  if (pendingFolders.length || inspectedItems >= 2000) {
+    throw new Error("This Drive folder is too large to verify every .gitignore policy safely.");
+  }
+
+  const ignoreFiles = projectFiles.filter((file) => file.path.split("/").at(-1)?.toLowerCase() === ".gitignore");
+  if (ignoreFiles.length > 50) throw new Error("This folder has too many ignore policies to verify safely.");
+  const policies: GitignorePolicy[] = [];
+  for (const ignoreFile of ignoreFiles) {
+    const response = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(ignoreFile.id)}?alt=media`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!response.ok) throw new Error("VCAIST could not verify this folder's privacy rules.");
+    policies.push(createGitignorePolicy(ignoreFile.path, await response.text()));
+  }
+
+  const evaluation = evaluateProjectPaths(projectFiles.map((file) => file.path), policies);
+  return { fileCount: evaluation.sourcePaths.length, privacy: evaluation.privacy };
 }

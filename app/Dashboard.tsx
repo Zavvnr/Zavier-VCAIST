@@ -50,7 +50,7 @@ const workspaceViewGuides: Record<WorkspaceView, {
   tests: {
     eyebrow: "SAFETY TESTS · CATCH SURPRISES",
     title: "Review safety from customer input to system architecture",
-    description: "This page combines executed behavior checks with guided code and system-design review. Search business errors, input limits, rate limiting, authorization, payment integrity, resilience, and information-exposure risks, then select any finding for full evidence and protection guidance.",
+    description: "This page combines import privacy checks, executed behavior checks, and guided system-design review. Search secret exposure, business errors, input limits, rate limiting, authorization, payment integrity, resilience, and information-exposure risks, then select any finding for full evidence and protection guidance.",
     actions: ["Search the complete risk list", "Open full finding details", "Review safer system controls"],
   },
 };
@@ -275,6 +275,24 @@ export function Dashboard({ startWithImporter = false }: { startWithImporter?: b
           </section>
         )}
 
+        {projectReady && project.privacy ? (
+          <div
+            className={project.privacy.exposedSecretFileCount ? "privacy-boundary-alert critical" : "privacy-boundary-alert"}
+            role={project.privacy.exposedSecretFileCount ? "alert" : "note"}
+          >
+            <span className="privacy-boundary-icon" aria-hidden="true">{project.privacy.exposedSecretFileCount ? "!" : "✓"}</span>
+            <div>
+              <strong>{project.privacy.exposedSecretFileCount
+                ? "Sensitive configuration was blocked before analysis"
+                : "Project privacy boundary enforced"}</strong>
+              <p>{project.privacy.exposedSecretFileCount
+                ? `${project.privacy.exposedSecretFileCount} suspicious file path${project.privacy.exposedSecretFileCount === 1 ? " was" : "s were"} found outside .gitignore. No secret contents were opened or retained.`
+                : `${project.privacy.excludedFileCount} ignored or sensitive file${project.privacy.excludedFileCount === 1 ? " was" : "s were"} excluded before source analysis.`}</p>
+            </div>
+            {project.privacy.exposedSecretFileCount ? <button type="button" className="button dark" onClick={() => setView("tests")}>Review Critical Safety Test</button> : null}
+          </div>
+        ) : null}
+
         {scanning ? <ProjectScanProgress project={project} /> : null}
 
         {projectReady && project.source !== "demo" ? (
@@ -314,7 +332,7 @@ export function Dashboard({ startWithImporter = false }: { startWithImporter?: b
             }}
           />
         ) : null}
-        {projectReady && view === "tests" ? <SafetyTests results={testResults} shippingFee={knobs.shippingFee} /> : null}
+        {projectReady && view === "tests" ? <SafetyTests results={testResults} shippingFee={knobs.shippingFee} project={project} /> : null}
       </div>
       {importOpen ? (
         <ImportProjectDialog
@@ -1491,24 +1509,54 @@ const safetyFindingsByPriority = [...safetyFindingCatalog].sort(
   (left, right) => safetySeverityPriority[left.severity] - safetySeverityPriority[right.severity],
 );
 
+function createSecretExposureFinding(project: ImportedProject): SafetyFinding | null {
+  const exposedCount = project.privacy?.exposedSecretFileCount ?? 0;
+  if (!exposedCount) return null;
+
+  return {
+    id: "secret-file-exposure",
+    status: "risk",
+    severity: "critical",
+    category: "Secrets and environment",
+    title: "Sensitive configuration is not protected by .gitignore",
+    summary: `${exposedCount} environment or secret file${exposedCount === 1 ? " was" : "s were"} visible at the project boundary without a matching ignore rule. VCAIST blocked the file${exposedCount === 1 ? "" : "s"} without opening them.`,
+    check: "Compared project path metadata with built-in environment and credential filename rules, then applied every readable .gitignore policy before selecting any file for analysis.",
+    evidence: `${exposedCount} suspicious file path${exposedCount === 1 ? " was" : "s were"} detected outside the effective ignore policy. File contents were not read, indexed, cached, logged, or sent to an AI provider.`,
+    scenario: "A secret-bearing file is left outside .gitignore, then becomes eligible for source control, cloud synchronization, an archive, or a less careful analysis tool.",
+    impact: "API keys, database credentials, signing material, or private configuration could be exposed and used to access connected systems.",
+    recommendation: "Add the sensitive path to .gitignore, remove any tracked copy from source control history, rotate potentially exposed credentials, and verify that deployment secrets live only in protected server-side environment settings.",
+    affected: ["Environment files", "Credentials", "Source control", "AI privacy boundary"],
+    fileName: "Content withheld",
+    filePath: "Project import privacy boundary",
+    code: `[BLOCKED BEFORE READ]\n${exposedCount} sensitive path${exposedCount === 1 ? "" : "s"} require attention.\nNo secret content was inspected or retained.`,
+  };
+}
+
 type SafetyFilter = "all" | "risks" | "passed";
 
-function SafetyTests({ results, shippingFee }: { results: ReturnType<typeof stressTest>; shippingFee: number }) {
+function SafetyTests({ results, shippingFee, project }: { results: ReturnType<typeof stressTest>; shippingFee: number; project: ImportedProject }) {
   const [filter, setFilter] = useState<SafetyFilter>("all");
   const [query, setQuery] = useState("");
-  const [selectedFindingId, setSelectedFindingId] = useState(safetyFindingsByPriority[0].id);
+  const secretExposureFinding = useMemo(() => createSecretExposureFinding(project), [project]);
+  const projectFindings = useMemo(
+    () => secretExposureFinding ? [secretExposureFinding, ...safetyFindingsByPriority] : safetyFindingsByPriority,
+    [secretExposureFinding],
+  );
+  const [selectedFindingId, setSelectedFindingId] = useState(
+    () => secretExposureFinding?.id ?? safetyFindingsByPriority[0].id,
+  );
   const normalizedQuery = query.trim().toLowerCase();
-  const filteredFindings = useMemo(() => safetyFindingsByPriority.filter((finding) => {
+  const filteredFindings = useMemo(() => projectFindings.filter((finding) => {
     const matchesFilter = filter === "all" || (filter === "risks" ? finding.status === "risk" : finding.status === "passed");
     const matchesQuery = !normalizedQuery || [finding.title, finding.summary, finding.category, finding.severity, ...finding.affected]
       .some((value) => value.toLowerCase().includes(normalizedQuery));
     return matchesFilter && matchesQuery;
-  }), [filter, normalizedQuery]);
+  }), [filter, normalizedQuery, projectFindings]);
 
   const selectedFinding = filteredFindings.find((finding) => finding.id === selectedFindingId)
     ?? filteredFindings[0]
-    ?? safetyFindingsByPriority.find((finding) => finding.id === selectedFindingId)
-    ?? safetyFindingsByPriority[0];
+    ?? projectFindings.find((finding) => finding.id === selectedFindingId)
+    ?? projectFindings[0];
   const emptyOrder = results.find((result) => result.quantity === 0);
   const selectedEvidence = selectedFinding.id === "negative-total"
     ? `The executed quantity-0 check expected at least $0.00 and received −${preciseMoney.format(Math.abs(emptyOrder?.total ?? shippingFee))}.`
@@ -1523,7 +1571,7 @@ function SafetyTests({ results, shippingFee }: { results: ReturnType<typeof stre
           <span className="review-scope-pill">Guided architecture review</span>
         </div>
 
-        <div className="safety-review-boundary" role="note"><span aria-hidden="true">i</span><p><strong>What is real in this prototype?</strong>The pricing boundary test executes the bundled ShopSpring function. Security findings are guided code-review examples based on the sample architecture, not proof that an imported project was exploited.</p></div>
+        <div className="safety-review-boundary" role="note"><span aria-hidden="true">i</span><p><strong>What is real in this prototype?</strong>The import privacy check uses path metadata and .gitignore rules without opening secret files, and the pricing boundary test executes the bundled ShopSpring function. Security findings are guided code-review examples based on the sample architecture.</p></div>
 
         <div className="safety-sort-note" role="note"><span aria-hidden="true">↓</span><p><strong>Highest priority first.</strong> Critical risks appear before high and medium findings; verified protections stay at the bottom.</p></div>
 

@@ -55,6 +55,20 @@ No API key or database is required for this prototype. The active model selector
 
 Local folders and public GitHub repositories work without credentials. Google Drive uses Google's read-only Picker flow and needs three public identifiers from a Google Cloud project. Copy `.env.example` to `.env.local`, fill in the values, enable the Google Picker and Drive APIs, and add your local and deployed origins to the OAuth client. No OAuth client secret belongs in the browser environment.
 
+### Vercel deployment
+
+The hosted application targets Vercel's native Next.js runtime. Connect the GitHub repository to a Vercel project, review a Preview deployment first, and promote an approved build to Production only when the platform is ready.
+
+Configure these server-side Production values as encrypted Vercel environment variables; never commit or expose their values:
+
+- `OPENAI_API_KEY`
+- `ANTHROPIC_API_KEY`
+- `GEMINI_API_KEY`
+- `MOONSHOT_API_KEY`
+- `DASHSCOPE_API_KEY`
+
+Google Drive additionally needs `NEXT_PUBLIC_GOOGLE_DRIVE_APP_ID`, `NEXT_PUBLIC_GOOGLE_DRIVE_API_KEY`, and `NEXT_PUBLIC_GOOGLE_DRIVE_CLIENT_ID`. These three identifiers are intentionally available to browser code and are not server secrets. Add the deployed Vercel origin to the Google OAuth client's authorized JavaScript origins before testing Drive import. Environment-variable changes apply on the next Vercel deployment.
+
 ### Hardware
 
 - Minimum: dual-core CPU, 4 GB RAM, and 300 MB free disk space

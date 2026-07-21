@@ -9,6 +9,9 @@ import {
 } from "../lib/pricing.ts";
 import {
   cleanProjectName,
+  createGitignorePolicy,
+  evaluateProjectPaths,
+  isSensitiveProjectPath,
   isSourcePath,
   parseGitHubRepositoryUrl,
   summarizeProjectFiles,
@@ -417,6 +420,50 @@ test("validates folder and GitHub project sources", () => {
   assert.equal(cleanProjectName("my-great_app"), "My Great App");
 });
 
+test("blocks ignored environment and secret files before project analysis", async () => {
+  const rootPolicy = createGitignorePolicy(".gitignore", [
+    ".env*",
+    "secrets/",
+    "config/private.json",
+    "generated/",
+    "archives/**/secret[0-9].json",
+  ].join("\n"));
+  const nestedPolicy = createGitignorePolicy("packages/admin/.gitignore", "private/*.ts");
+  const evaluation = evaluateProjectPaths([
+    "src/app.ts",
+    "src/view.tsx",
+    ".env.local",
+    "secrets/token.json",
+    "config/private.json",
+    "config/exposed.credentials.json",
+    "generated/client.ts",
+    "archives/secret1.json",
+    "archives/2026/secret2.json",
+    "packages/admin/private/session.ts",
+    "packages/admin/public/page.ts",
+  ], [rootPolicy, nestedPolicy]);
+
+  assert.deepEqual(evaluation.sourcePaths, ["src/app.ts", "src/view.tsx", "packages/admin/public/page.ts"]);
+  assert.equal(evaluation.privacy.policyStatus, "enforced");
+  assert.equal(evaluation.privacy.gitignoreRuleCount, 6);
+  assert.equal(evaluation.privacy.excludedFileCount, 8);
+  assert.equal(evaluation.privacy.exposedSecretFileCount, 1);
+  assert.equal(isSensitiveProjectPath(".env.production"), true);
+  assert.equal(isSensitiveProjectPath("certificates/signing.key"), true);
+  assert.equal(isSensitiveProjectPath("src/config.ts"), false);
+
+  const importer = await readFile(new URL("../app/components/ImportProjectDialog.tsx", import.meta.url), "utf8");
+  const dashboard = await readFile(new URL("../app/Dashboard.tsx", import.meta.url), "utf8");
+  assert.match(importer, /summarizeProjectFilesSafely/);
+  assert.match(importer, /path\.split\("\/"\)\.at\(-1\)\?\.toLowerCase\(\) === "\.gitignore"/);
+  assert.match(importer, /Ignored environment and secret files are never inspected/);
+  assert.match(importer, /repository is too large to verify every \.gitignore policy safely/);
+  assert.match(importer, /Drive folder is too large to verify every \.gitignore policy safely/);
+  assert.match(dashboard, /severity: "critical"[\s\S]*Sensitive configuration is not protected by \.gitignore/);
+  assert.match(dashboard, /File contents were not read, indexed, cached, logged, or sent to an AI provider/);
+  assert.match(dashboard, /Review Critical Safety Test/);
+});
+
 test("fingerprints local projects so unchanged folders can reuse the scan cache", () => {
   const original = [
     { name: "app.ts", webkitRelativePath: "sample/src/app.ts", size: 120, lastModified: 1000 },
@@ -435,4 +482,19 @@ test("removes the temporary starter preview", async () => {
   const packageJson = await readFile(new URL("../package.json", import.meta.url), "utf8");
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
   await assert.rejects(access(new URL("../app/_sites-preview", templateRoot)));
+});
+
+test("targets Vercel's native Next.js runtime without uploading local secrets", async () => {
+  const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+  const vercelIgnore = await readFile(new URL("../.vercelignore", import.meta.url), "utf8");
+
+  assert.equal(packageJson.scripts.dev, "next dev");
+  assert.equal(packageJson.scripts.build, "next build");
+  assert.equal(packageJson.scripts.start, "next start");
+  assert.equal(packageJson.devDependencies?.vinext, undefined);
+  assert.match(vercelIgnore, /^\.env\*$/m);
+  assert.match(vercelIgnore, /^\.openai$/m);
+  await assert.rejects(access(new URL("../vite.config.ts", templateRoot)));
+  await assert.rejects(access(new URL("../worker/index.ts", templateRoot)));
+  await assert.rejects(access(new URL("../db/index.ts", templateRoot)));
 });

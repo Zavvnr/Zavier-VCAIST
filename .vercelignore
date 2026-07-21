@@ -1,0 +1,8 @@
+.env*
+.openai
+.wrangler
+build
+db
+dist
+worker
+vite.config.ts
