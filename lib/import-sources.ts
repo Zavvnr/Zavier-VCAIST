@@ -27,6 +27,7 @@ export type GitignorePolicy = {
 
 const sourceExtensions = new Set([
   "css",
+  "astro",
   "go",
   "html",
   "java",
@@ -42,6 +43,7 @@ const sourceExtensions = new Set([
   "scss",
   "sql",
   "swift",
+  "svelte",
   "toml",
   "ts",
   "tsx",

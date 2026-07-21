@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEven
 import { AppChrome } from "./components/AppChrome";
 import { ImportProjectDialog } from "./components/ImportProjectDialog";
 import type { ImportedProject } from "@/lib/import-sources";
-import type { ProjectPage, ProjectWorkflowStep } from "@/lib/project-analysis";
+import type { NavigationGraph, ProjectPage, ProjectWorkflowStep } from "@/lib/project-analysis";
 import {
   defaultPreferences,
   modelGroups,
@@ -58,6 +58,7 @@ const workspaceViewGuides: Record<WorkspaceView, {
 
 const scanCacheStorageKey = "vcaist-project-scan-cache-v1";
 const scanCacheLifetime = 30 * 24 * 60 * 60 * 1000;
+const navigationGraphCache = new Map<string, NavigationGraph>();
 
 function projectScanCacheKey(project: ImportedProject) {
   return project.cacheKey ?? `${project.source}:${project.name}:${project.fileCount}`;
@@ -326,6 +327,8 @@ export function Dashboard({ startWithImporter = false }: { startWithImporter?: b
         {projectReady && view === "map" ? (
           <AppMap
             project={project}
+            model={model}
+            onModelUnavailable={setUnavailableModel}
             mode={mapMode}
             setMode={setMapMode}
             runtimeErrorCount={runtimeErrorCount}
@@ -418,10 +421,10 @@ function ProjectScanProgress({ project }: { project: ImportedProject }) {
 }
 
 const demoApplicationPages: readonly ProjectPage[] = [
-  { id: "home", name: "Home", route: "/", purpose: "Brand story and featured products", sourcePath: "src/app/page.tsx", summary: "A candle storefront introduces the brand and featured products.", headings: ["Make everyday rituals feel considered."], navigation: ["New", "Shop", "Our story"], code: "export default function HomePage() {\n  return <Storefront />;\n}" },
-  { id: "catalog", name: "Catalog", route: "/shop", purpose: "Browse and compare the full collection", sourcePath: "src/app/shop/page.tsx", summary: "The full candle collection appears in a product grid.", headings: ["Find your next favorite"], navigation: ["New", "Shop", "Our story"], code: "export default function CatalogPage() {\n  return <ProductGrid />;\n}" },
-  { id: "cart", name: "Cart", route: "/cart", purpose: "Review items, discounts, and totals", sourcePath: "src/app/cart/page.tsx", summary: "The shopper reviews items and the calculated order total.", headings: ["A few good things"], navigation: ["New", "Shop", "Our story"], code: "export default function CartPage() {\n  return <Cart />;\n}" },
-  { id: "checkout", name: "Checkout", route: "/checkout", purpose: "Confirm delivery and payment", sourcePath: "src/app/checkout/page.tsx", summary: "The shopper confirms delivery details before payment.", headings: ["Where should we send it?"], navigation: ["New", "Shop", "Our story"], code: "export default function CheckoutPage() {\n  return <Checkout />;\n}" },
+  { id: "home", name: "Home", route: "/", purpose: "Brand story and featured products", sourcePath: "src/app/page.tsx", summary: "A candle storefront introduces the brand and featured products.", headings: ["Make everyday rituals feel considered."], navigation: ["New", "Shop", "Our story"], links: [], code: "export default function HomePage() {\n  return <Storefront />;\n}" },
+  { id: "catalog", name: "Catalog", route: "/shop", purpose: "Browse and compare the full collection", sourcePath: "src/app/shop/page.tsx", summary: "The full candle collection appears in a product grid.", headings: ["Find your next favorite"], navigation: ["New", "Shop", "Our story"], links: [], code: "export default function CatalogPage() {\n  return <ProductGrid />;\n}" },
+  { id: "cart", name: "Cart", route: "/cart", purpose: "Review items, discounts, and totals", sourcePath: "src/app/cart/page.tsx", summary: "The shopper reviews items and the calculated order total.", headings: ["A few good things"], navigation: ["New", "Shop", "Our story"], links: [], code: "export default function CartPage() {\n  return <Cart />;\n}" },
+  { id: "checkout", name: "Checkout", route: "/checkout", purpose: "Confirm delivery and payment", sourcePath: "src/app/checkout/page.tsx", summary: "The shopper confirms delivery details before payment.", headings: ["Where should we send it?"], navigation: ["New", "Shop", "Our story"], links: [], code: "export default function CheckoutPage() {\n  return <Checkout />;\n}" },
 ];
 
 type ApplicationPage = ProjectPage;
@@ -550,7 +553,9 @@ function ApplicationInterfaceCarousel({
         <p className="application-preview-boundary">
           {isGuidedDemo
             ? "This carousel shows all four pages in the bundled ShopSpring practice application."
-            : `This structural preview was generated from ${project.analysis?.analyzedFileCount ?? 0} approved source files in ${project.name}. It shows detected routes, headings, navigation, and purpose without executing untrusted project code.`}
+            : activePage.previewHtml
+              ? `This is the imported static interface from ${activePage.sourcePath}, rendered in an isolated sandbox. Scripts, forms, external requests, and storage access are disabled.`
+              : `This source-backed interface reconstruction was generated from ${project.analysis?.analyzedFileCount ?? 0} approved files in ${project.name}. This view requires a framework build, so imported code is not executed in the browser.`}
         </p>
       ) : null}
     </div>
@@ -768,6 +773,18 @@ function AiChangeAssistant({
 function ApplicationPagePreview({ page, project }: { page: ApplicationPage; project: ImportedProject }) {
   if (project.source === "demo") return <ShopSpringPagePreview page={page} projectName={project.name} />;
 
+  if (page.previewHtml) {
+    return (
+      <iframe
+        className="imported-interface-frame"
+        title={`${project.name} — ${page.name} imported interface`}
+        srcDoc={page.previewHtml}
+        sandbox=""
+        referrerPolicy="no-referrer"
+      />
+    );
+  }
+
   const kind = project.analysis?.kind ?? "application";
   const headings = page.headings.length ? page.headings : [page.name, page.purpose];
   const navigation = page.navigation.length ? page.navigation : pagesForProject(project).map((entry) => entry.name).slice(0, 5);
@@ -892,14 +909,17 @@ const programFeatures = [
 function ProgramOverview({ project }: { project: ImportedProject }) {
   const analysis = project.analysis;
   const isDemo = project.source === "demo";
+  const overviewFeatures = isDemo
+    ? programFeatures.map(([title, description]) => ({ title, description }))
+    : analysis?.overview.features ?? [];
   return (
     <section className="panel program-overview" aria-labelledby="program-overview-title">
       <div className="program-overview-heading">
         <div>
-          <span className="section-kicker">PROGRAM OVERVIEW</span>
-          <h2 id="program-overview-title">Understand an app without becoming its engineer</h2>
+          <span className="section-kicker">{isDemo ? "PROGRAM OVERVIEW" : "APPLICATION OVERVIEW"}</span>
+          <h2 id="program-overview-title">{isDemo ? "Understand an app without becoming its engineer" : `What ${project.name} does and who it serves`}</h2>
         </div>
-        <span className="overview-scope-pill">Explain · simulate · verify</span>
+        <span className="overview-scope-pill">{isDemo ? "Explain · simulate · verify" : `${analysis?.kind ?? "application"} · ${analysis?.framework ?? "source"}`}</span>
       </div>
 
       <div className="program-overview-copy">
@@ -915,23 +935,20 @@ function ProgramOverview({ project }: { project: ImportedProject }) {
             </div>
           </div>
         ) : null}
-        <p>
+        {isDemo ? <p>
           VCAIST gives app owners a plain-English control room for software they depend on. It connects a project source,
           makes important rules visible, lets people test business changes safely, and explains surprising results before
           anyone decides what to change.
-        </p>
+        </p> : <p><strong>Purpose:</strong> {analysis?.overview.purpose}</p>}
         {isDemo ? <p>
           The current prototype indexes supported project files and demonstrates the complete analysis loop with the bundled
           ShopSpring pricing fixture. Project-specific AI extraction and approval-based publishing are the next backend milestones;
           the interface labels that boundary instead of pretending background analysis is still running.
-        </p> : <p>
-          For this connected project, the overview, interface carousel, comparison, app map, and Safety Tests are generated from
-          approved source only. VCAIST does not execute imported code, open ignored secrets, or present the financial demo as project evidence.
-        </p>}
+        </p> : <p><strong>Intended audience:</strong> {analysis?.overview.audience}. The sections below summarize the application itself, rather than the VCAIST platform.</p>}
       </div>
 
-      <div className="program-feature-grid" aria-label="VCAIST features">
-        {programFeatures.map(([title, description], index) => (
+      <div className="program-feature-grid" aria-label={isDemo ? "VCAIST features" : `${project.name} features`}>
+        {overviewFeatures.map(({ title, description }, index) => (
           <article key={title}>
             <span aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
             <div><h3>{title}</h3><p>{description}</p></div>
@@ -940,10 +957,10 @@ function ProgramOverview({ project }: { project: ImportedProject }) {
       </div>
 
       <aside className="program-story" aria-labelledby="program-story-title">
-        <div className="story-person" aria-hidden="true">{isDemo ? "M" : "A"}</div>
+        <div className="story-person" aria-hidden="true">{isDemo ? "M" : (analysis?.overview.storyTitle.slice(0, 1) ?? "V")}</div>
         <div className="story-copy">
           <span className="section-kicker">EXAMPLE USER STORY</span>
-          <h3 id="program-story-title">{isDemo ? "Maya needs to understand a checkout she did not build" : `Alex wants to understand ${project.name} before requesting a change`}</h3>
+          <h3 id="program-story-title">{isDemo ? "Maya needs to understand a checkout she did not build" : analysis?.overview.storyTitle}</h3>
           {isDemo ? <>
           <p>
             Maya runs a small online candle shop. Her developer is unavailable, but she needs to understand whether a new bulk
@@ -957,13 +974,8 @@ function ProgramOverview({ project }: { project: ImportedProject }) {
             <li><strong>Act with context:</strong> Maya shares the explanation and exact failing case with her developer. Nothing is published without approval.</li>
           </ol>
           </> : <>
-            <p>Alex connects {project.name} from {project.sourceLabel}. VCAIST applies the project’s ignore rules first, reads only approved source, and builds a private manifest without changing or executing the application.</p>
-            <ol>
-              <li><strong>Orient:</strong> Alex learns that {analysis?.description.toLowerCase()}</li>
-              <li><strong>Browse:</strong> Current Application shows {analysis?.pages.length ?? 1} detected view{analysis?.pages.length === 1 ? "" : "s"}, with real routes and source-backed headings.</li>
-              <li><strong>Trace:</strong> App Map connects those views to the approved files that define them.</li>
-              <li><strong>Review safely:</strong> Safety Tests show only source-backed findings and privacy checks; AI change planning still requires permission.</li>
-            </ol>
+            <p>{analysis?.overview.storyIntroduction}</p>
+            <ol>{analysis?.overview.storySteps.map((step) => <li key={step.label}><strong>{step.label}:</strong> {step.description}</li>)}</ol>
           </>}
         </div>
       </aside>
@@ -1182,6 +1194,8 @@ const appEntityRelationships = [
 
 function AppMap({
   project,
+  model,
+  onModelUnavailable,
   mode,
   setMode,
   runtimeErrorCount,
@@ -1189,6 +1203,8 @@ function AppMap({
   onOpenSafetyTests,
 }: {
   project: ImportedProject;
+  model: ModelId;
+  onModelUnavailable: (model: ModelId) => void;
   mode: "plain" | "technical";
   setMode: (mode: "plain" | "technical") => void;
   runtimeErrorCount: number;
@@ -1196,20 +1212,59 @@ function AppMap({
   onOpenSafetyTests: () => void;
 }) {
   const [selectedStep, setSelectedStep] = useState<number | null>(null);
+  const [graphResult, setGraphResult] = useState<{ key: string; graph: NavigationGraph } | null>(null);
+  const [graphLoadingKey, setGraphLoadingKey] = useState("");
   const steps: readonly ProjectWorkflowStep[] = project.analysis?.workflow.length ? project.analysis.workflow : appMapSteps;
   const isDemo = project.source === "demo";
+  const sourceGraph = project.analysis?.navigationGraph;
+  const graphKey = `${project.cacheKey ?? project.name}:${model}`;
+  const graph = graphResult?.key === graphKey ? graphResult.graph : sourceGraph;
+  const graphLoading = graphLoadingKey === graphKey;
+  const modelLabel = modelOptions.find((option) => option.id === model)?.label ?? model;
+
+  useEffect(() => {
+    if (isDemo || !sourceGraph) return;
+    const cached = navigationGraphCache.get(graphKey);
+    if (cached) {
+      queueMicrotask(() => setGraphResult({ key: graphKey, graph: cached }));
+      return;
+    }
+
+    const controller = new AbortController();
+    queueMicrotask(() => setGraphLoadingKey(graphKey));
+    fetch("/api/ai/navigation-graph", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model, project: project.name, graph: sourceGraph }),
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        const body = await response.json() as { code?: string; graph?: NavigationGraph };
+        if (!response.ok || !body.graph) {
+          if (body.code === "MODEL_UNAVAILABLE" || response.status === 503) onModelUnavailable(model);
+          return;
+        }
+        navigationGraphCache.set(graphKey, body.graph);
+        setGraphResult({ key: graphKey, graph: body.graph });
+      })
+      .catch((error: unknown) => {
+        if (!(error instanceof DOMException && error.name === "AbortError")) onModelUnavailable(model);
+      })
+      .finally(() => setGraphLoadingKey((current) => current === graphKey ? "" : current));
+    return () => controller.abort();
+  }, [graphKey, isDemo, model, onModelUnavailable, project.name, sourceGraph]);
 
   return (
     <div className="map-layout">
       <section className="panel map-panel">
         <div className="panel-heading horizontal">
-          <div><span className="section-kicker">YOUR APP, EXPLAINED</span><h2>{isDemo ? "How a purchase moves through ShopSpring" : `How visitors move through ${project.name}`}</h2><p>{isDemo ? "Follow the path from adding an item to receiving payment." : "Follow the detected interface path from the first view to the next important destination."} Select any step to inspect its approved source.</p></div>
-          <div className="segmented-control" aria-label="Diagram language">
+          <div><span className="section-kicker">YOUR APP, EXPLAINED</span><h2>{isDemo ? "How a purchase moves through ShopSpring" : graph?.title ?? `Navigation map for ${project.name}`}</h2><p>{isDemo ? "Follow the path from adding an item to receiving payment. Select any step to inspect its approved source." : graph?.summary}</p></div>
+          {isDemo ? <div className="segmented-control" aria-label="Diagram language">
             <button className={mode === "plain" ? "active" : ""} onClick={() => setMode("plain")}>Plain English</button>
             <button className={mode === "technical" ? "active" : ""} onClick={() => setMode("technical")}>Technical</button>
-          </div>
+          </div> : <div className={graphLoading ? "ai-graph-status loading" : "ai-graph-status"}><span aria-hidden="true">AI</span><div><strong>{graphLoading ? `${modelLabel} is organizing the map…` : graph?.generatedBy === "ai" ? `Organized by ${modelLabel}` : "Source map shown"}</strong><small>{graphLoading ? "The source-derived map remains usable while you wait." : graph?.rationale}</small></div></div>}
         </div>
-        <div className="flow-map">
+        {isDemo ? <div className="flow-map">
           {steps.map((step, index) => {
             const hasRuntimeError = isDemo && runtimeErrorCount > 0 && step.filePath === "lib/pricing.ts";
             return (
@@ -1232,16 +1287,16 @@ function AppMap({
               </div>
             );
           })}
-        </div>
+        </div> : graph ? <ApplicationNavigationGraph graph={graph} steps={steps} selectedStep={selectedStep} onSelectStep={setSelectedStep} /> : null}
 
         {selectedStep === null ? (
-          <div className="source-workspace-prompt" id="app-map-source-workspace" role="note"><span aria-hidden="true">{`{ }`}</span><p><strong>Select any step to inspect its source</strong>The file will open here in a read-only workspace.</p></div>
+          <div className="source-workspace-prompt" id="app-map-source-workspace" role="note"><span aria-hidden="true">{`{ }`}</span><p><strong>Select any {isDemo ? "step" : "page or section"} to inspect its source</strong>The file will open here in a read-only workspace.</p></div>
         ) : <SourceCodeWorkspace project={project} steps={steps} selectedStep={selectedStep} onSelect={setSelectedStep} runtimeErrorCount={runtimeErrorCount} />}
       </section>
       <aside className="panel map-insight">
         <div className="insight-icon" aria-hidden="true">◎</div><span className="section-kicker">VCAIST NOTICED</span>
-        <h2>{isDemo ? "One rule affects two important moments" : `${project.name} has ${steps.length} connected interface steps`}</h2>
-        <p>{isDemo ? "The same pricing function sets the number at checkout and the amount sent to Stripe. A mistake here reaches real payments." : `VCAIST traced these steps to ${new Set(steps.map((step) => step.filePath)).size} approved source modules. Select a step to see the exact redacted source excerpt.`}</p>
+        <h2>{isDemo ? "One rule affects two important moments" : `${project.name} has ${graph?.nodes.length ?? steps.length} navigable views`}</h2>
+        <p>{isDemo ? "The same pricing function sets the number at checkout and the amount sent to Stripe. A mistake here reaches real payments." : `This map describes available routes and links, not a forced sequence. It is based on ${new Set(steps.map((step) => step.filePath)).size} approved source modules.`}</p>
         <div className="impact-list">{isDemo ? <><div><span>Checkout total</span><strong>Direct impact</strong></div><div><span>Payment charge</span><strong>Direct impact</strong></div><div><span>Order receipt</span><strong>Copies total</strong></div></> : <><div><span>Application type</span><strong>{project.analysis?.kind}</strong></div><div><span>Detected framework</span><strong>{project.analysis?.framework}</strong></div><div><span>Approved files</span><strong>{project.analysis?.analyzedFileCount}</strong></div></>}</div>
       </aside>
       <EntityRelationshipSection
@@ -1250,6 +1305,35 @@ function AppMap({
         compileErrorCount={compileErrorCount}
         onOpenSafetyTests={onOpenSafetyTests}
       />
+    </div>
+  );
+}
+
+function ApplicationNavigationGraph({
+  graph,
+  steps,
+  selectedStep,
+  onSelectStep,
+}: {
+  graph: NavigationGraph;
+  steps: readonly ProjectWorkflowStep[];
+  selectedStep: number | null;
+  onSelectStep: (index: number) => void;
+}) {
+  const nodeNames = new Map(graph.nodes.map((node) => [node.id, node.label]));
+  return (
+    <div className={`navigation-graph layout-${graph.layout}`} aria-label={graph.title}>
+      <div className="navigation-node-grid">
+        {graph.nodes.map((node) => {
+          const routeStepIndex = steps.findIndex((step) => step.technicalDetail === node.route);
+          const stepIndex = Math.max(0, routeStepIndex >= 0 ? routeStepIndex : steps.findIndex((step) => step.filePath === node.sourcePath));
+          return <button type="button" className={selectedStep === stepIndex ? "navigation-node selected" : "navigation-node"} key={node.id} onClick={() => onSelectStep(stepIndex)} aria-pressed={selectedStep === stepIndex}><span>{node.route}</span><strong>{node.label}</strong><small>{node.purpose}</small><em>Inspect source ↓</em></button>;
+        })}
+      </div>
+      <div className="navigation-edge-list" aria-label="Navigation relationships">
+        {graph.edges.map((edge) => <div key={`${edge.from}-${edge.to}`}><strong>{nodeNames.get(edge.from)}</strong><span>→ {edge.label} →</span><strong>{nodeNames.get(edge.to)}</strong></div>)}
+        {!graph.edges.length ? <p>These views were detected, but no direct internal link relationship was found in the approved source.</p> : null}
+      </div>
     </div>
   );
 }

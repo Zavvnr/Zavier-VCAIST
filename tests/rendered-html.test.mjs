@@ -44,10 +44,30 @@ test("builds a portfolio manifest instead of reusing the financial demo", () => 
 
   assert.equal(analysis.kind, "portfolio");
   assert.equal(analysis.framework, "React + Vite");
-  assert.deepEqual(analysis.pages.map((page) => page.route), ["/", "/#contact", "/#projects"]);
+  assert.deepEqual(analysis.pages.map((page) => page.route), ["/", "/#projects", "/#contact"]);
   assert.ok(analysis.entities.some((entity) => entity.name === "Project"));
   assert.ok(analysis.workflow.every((step) => step.filePath === "src/App.tsx"));
+  assert.match(analysis.overview.purpose, /background, experience, work, and contact paths/i);
+  assert.match(analysis.overview.storyTitle, /explores Zavier Portfolio’s work/i);
+  assert.ok(["hub", "network"].includes(analysis.navigationGraph.layout));
   assert.doesNotMatch(JSON.stringify(analysis), /ShopSpring|checkout|shopping cart|Stripe/i);
+});
+
+test("renders approved static HTML as a real isolated interface", () => {
+  const analysis = analyzeProjectSources({
+    name: "Zavier Portfolio",
+    sourcePaths: ["index.html", "styles.css"],
+    documents: [
+      { path: "styles.css", content: "body{background:#101615;color:#f7f2ec}.hero{display:grid}" },
+      { path: "index.html", content: `<!doctype html><html><head><script>alert('no')</script></head><body onclick="steal()"><nav><a href="#experience">Experience</a><a href="#contact">Contact</a></nav><main class="hero"><h1>Zavier Rahmansyah</h1><section id="experience"><h2>Experience</h2></section><section id="contact"><h2>Contact</h2></section></main></body></html>` },
+    ],
+  });
+  const preview = analysis.pages[0].previewHtml ?? "";
+  assert.match(preview, /Zavier Rahmansyah/);
+  assert.match(preview, /body\{background:#101615/);
+  assert.match(preview, /Content-Security-Policy/);
+  assert.doesNotMatch(preview, /<script|onclick=|steal\(\)|alert\('no'\)/i);
+  assert.deepEqual(analysis.navigationGraph.edges.map((edge) => edge.label), ["Experience", "Contact"]);
 });
 
 test("reads only approved source after privacy exclusions", async () => {
@@ -337,6 +357,26 @@ test("keeps Current Application focused on its consent-first page carousel", asy
   assert.match(source, /Allow change planning/);
   assert.match(source, /Approve sandbox draft/);
   assert.match(source, /This prototype does not edit connected source files yet/);
+  assert.match(source, /className="imported-interface-frame"[\s\S]*srcDoc=\{page\.previewHtml\}[\s\S]*sandbox=""[\s\S]*referrerPolicy="no-referrer"/);
+  assert.match(source, /This is the imported static interface/);
+});
+
+test("makes Overview and App Map specific to the selected application", async () => {
+  const source = await readFile(new URL("../app/Dashboard.tsx", import.meta.url), "utf8");
+  const analysis = await readFile(new URL("../lib/project-analysis.ts", import.meta.url), "utf8");
+  const graphRoute = await readFile(new URL("../app/api/ai/navigation-graph/route.ts", import.meta.url), "utf8");
+  assert.match(source, /APPLICATION OVERVIEW/);
+  assert.match(source, /analysis\?\.overview\.purpose/);
+  assert.match(source, /analysis\?\.overview\.features/);
+  assert.match(source, /analysis\?\.overview\.storyTitle/);
+  assert.match(source, /analysis\?\.overview\.storySteps\.map/);
+  assert.match(source, /<ApplicationNavigationGraph graph=\{graph\}/);
+  assert.match(source, /This map describes available routes and links, not a forced sequence/);
+  assert.match(analysis, /buildSourceNavigationGraph/);
+  assert.match(graphRoute, /free choice among hub, radial, layers, or network layout/i);
+  assert.match(graphRoute, /Never invent a page, route, file, feature, database, or security result/);
+  assert.match(graphRoute, /canonicalNodes/);
+  assert.doesNotMatch(graphRoute, /source code|document\.content|previewHtml/);
 });
 
 test("replaces Controls with a two-application carousel comparison", async () => {

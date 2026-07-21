@@ -14,7 +14,47 @@ export type ProjectPage = {
   summary: string;
   headings: readonly string[];
   navigation: readonly string[];
+  links: readonly ProjectPageLink[];
   code: string;
+  previewHtml?: string;
+};
+
+export type ProjectPageLink = {
+  label: string;
+  destination: string;
+};
+
+export type NavigationGraphNode = {
+  id: string;
+  label: string;
+  route: string;
+  purpose: string;
+  sourcePath: string;
+};
+
+export type NavigationGraphEdge = {
+  from: string;
+  to: string;
+  label: string;
+};
+
+export type NavigationGraph = {
+  title: string;
+  summary: string;
+  layout: "hub" | "radial" | "layers" | "network";
+  nodes: readonly NavigationGraphNode[];
+  edges: readonly NavigationGraphEdge[];
+  rationale: string;
+  generatedBy: "source" | "ai";
+};
+
+export type ApplicationOverview = {
+  purpose: string;
+  audience: string;
+  features: readonly { title: string; description: string }[];
+  storyTitle: string;
+  storyIntroduction: string;
+  storySteps: readonly { label: string; description: string }[];
 };
 
 export type ProjectWorkflowStep = {
@@ -71,6 +111,8 @@ export type ProjectAnalysis = {
   entities: readonly ProjectEntity[];
   relationships: readonly ProjectRelationship[];
   findings: readonly ProjectSourceFinding[];
+  overview: ApplicationOverview;
+  navigationGraph: NavigationGraph;
   analyzedFileCount: number;
   indexedFilePaths: readonly string[];
 };
@@ -81,7 +123,7 @@ type AnalysisInput = {
   documents: readonly SafeSourceDocument[];
 };
 
-const routeExtensions = "(?:js|jsx|ts|tsx|vue|html)";
+const routeExtensions = "(?:js|jsx|ts|tsx|vue|svelte|astro|html)";
 const secretAssignmentPattern = /\b(api[_-]?key|client[_-]?secret|access[_-]?token|auth[_-]?token|password)\b\s*[:=]\s*["'`]((?!process\.env|import\.meta\.env)[^"'`\n]{8,})["'`]/i;
 
 export function analyzeProjectSources({ name, sourcePaths, documents }: AnalysisInput): ProjectAnalysis {
@@ -92,10 +134,12 @@ export function analyzeProjectSources({ name, sourcePaths, documents }: Analysis
   const kind = detectProjectKind(name, corpus);
   const framework = detectFramework(sourcePaths, normalizedDocuments);
   const technologies = detectTechnologies(sourcePaths, corpus, framework);
-  const pages = detectPages(normalizedDocuments, kind);
+  const pages = attachSandboxedPreviews(detectPages(normalizedDocuments, kind), normalizedDocuments);
   const workflow = buildWorkflow(pages, normalizedDocuments);
   const { entities, relationships } = buildEntityModel(kind);
   const findings = scanSourceFindings(normalizedDocuments, sourcePaths);
+  const overview = buildApplicationOverview(name, kind, pages, framework, technologies);
+  const navigationGraph = buildSourceNavigationGraph(name, pages);
 
   return {
     kind,
@@ -107,6 +151,8 @@ export function analyzeProjectSources({ name, sourcePaths, documents }: Analysis
     entities,
     relationships,
     findings,
+    overview,
+    navigationGraph,
     analyzedFileCount: normalizedDocuments.length,
     indexedFilePaths: [...sourcePaths].sort(),
   };
@@ -183,9 +229,10 @@ function detectPages(documents: readonly SafeSourceDocument[], kind: ProjectKind
     addPage(pages, createPage(document, "/", kind, "Home"));
   }
 
-  return [...pages.values()]
-    .sort((left, right) => left.route === "/" ? -1 : right.route === "/" ? 1 : left.route.localeCompare(right.route))
-    .slice(0, 12);
+  const detected = [...pages.values()];
+  const homeIndex = detected.findIndex((page) => page.route === "/");
+  if (homeIndex > 0) detected.unshift(detected.splice(homeIndex, 1)[0]);
+  return detected.slice(0, 12);
 }
 
 function addPage(pages: Map<string, ProjectPage>, page: ProjectPage) {
@@ -195,7 +242,8 @@ function addPage(pages: Map<string, ProjectPage>, page: ProjectPage) {
 function createPage(document: SafeSourceDocument, route: string, kind: ProjectKind, explicitName?: string): ProjectPage {
   const headings = extractHeadings(document.content);
   const name = explicitName ?? nameFromRoute(route, headings[0]);
-  const navigation = extractNavigation(document.content);
+  const links = extractLinks(document.content);
+  const navigation = links.map((link) => link.label);
   return {
     id: slug(`${name}-${route}`),
     name,
@@ -207,6 +255,7 @@ function createPage(document: SafeSourceDocument, route: string, kind: ProjectKi
       : `This ${kind === "application" ? "application" : kind} view is defined in ${fileName(document.path)}.`,
     headings: headings.slice(0, 5),
     navigation: navigation.slice(0, 5),
+    links: route.startsWith("/#") ? [] : links.slice(0, 20),
     code: redactSourceSnippet(document.content),
   };
 }
@@ -265,13 +314,16 @@ function extractHeadings(content: string) {
   return headings;
 }
 
-function extractNavigation(content: string) {
-  const labels: string[] = [];
-  for (const match of content.matchAll(/<a\b[^>]*href=["'][^"']+["'][^>]*>([\s\S]*?)<\/a>/gi)) {
-    const text = cleanVisibleText(match[1]);
-    if (text && text.length <= 40 && !labels.includes(text)) labels.push(text);
+function extractLinks(content: string) {
+  const links: ProjectPageLink[] = [];
+  for (const match of content.matchAll(/<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi)) {
+    const label = cleanVisibleText(match[2]);
+    const destination = match[1].trim();
+    if (label && label.length <= 60 && destination && !links.some((link) => link.label === label && link.destination === destination)) {
+      links.push({ label, destination });
+    }
   }
-  return labels;
+  return links;
 }
 
 function buildWorkflow(pages: readonly ProjectPage[], documents: readonly SafeSourceDocument[]) {
@@ -290,6 +342,141 @@ function buildWorkflow(pages: readonly ProjectPage[], documents: readonly SafeSo
     highlightLines: [1, 2, 3, 4],
     code: page.code,
   }));
+}
+
+function attachSandboxedPreviews(pages: readonly ProjectPage[], documents: readonly SafeSourceDocument[]) {
+  const styles = documents
+    .filter((document) => /\.(css|scss)$/i.test(document.path))
+    .map((document) => document.content)
+    .join("\n")
+    .slice(0, 300_000);
+  const previewByPath = new Map<string, string>();
+
+  return pages.map((page) => {
+    if (!/\.html?$/i.test(page.sourcePath)) return page;
+    let previewHtml = previewByPath.get(page.sourcePath);
+    if (!previewHtml) {
+      const document = documents.find((candidate) => candidate.path === page.sourcePath);
+      if (!document) return page;
+      previewHtml = createSandboxedStaticHtml(document.content, styles);
+      previewByPath.set(page.sourcePath, previewHtml);
+    }
+    return { ...page, previewHtml };
+  });
+}
+
+function createSandboxedStaticHtml(html: string, styles: string) {
+  const safeStyles = styles
+    .replace(/@import\s+[^;]+;/gi, "")
+    .replace(/<\/style/gi, "<\\/style");
+  let safeHtml = html
+    .replace(/<script\b[\s\S]*?<\/script\s*>/gi, "")
+    .replace(/<(?:iframe|object|embed|base)\b[\s\S]*?<\/(?:iframe|object|embed)>/gi, "")
+    .replace(/<(?:iframe|object|embed|base)\b[^>]*\/?>/gi, "")
+    .replace(/<meta\b[^>]*http-equiv[^>]*>/gi, "")
+    .replace(/<link\b[^>]*rel=["']?stylesheet["']?[^>]*>/gi, "")
+    .replace(/\son[a-z]+\s*=\s*(?:["'][\s\S]*?["']|[^\s>]+)/gi, "")
+    .replace(/\s(?:href|src)\s*=\s*["']\s*javascript:[\s\S]*?["']/gi, "")
+    .replace(/\saction\s*=\s*(?:["'][\s\S]*?["']|[^\s>]+)/gi, "");
+  const headContent = `<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:; media-src data:; form-action 'none'; base-uri 'none'; navigate-to 'none'"><style>html,body{margin:0;min-height:100%;overflow:auto}${safeStyles}</style>`;
+  if (/<head\b[^>]*>/i.test(safeHtml)) safeHtml = safeHtml.replace(/<head\b[^>]*>/i, (head) => `${head}${headContent}`);
+  else if (/<html\b[^>]*>/i.test(safeHtml)) safeHtml = safeHtml.replace(/<html\b[^>]*>/i, (root) => `${root}<head>${headContent}</head>`);
+  else safeHtml = `<!doctype html><html><head>${headContent}</head><body>${safeHtml}</body></html>`;
+  return safeHtml.slice(0, 650_000);
+}
+
+function buildApplicationOverview(
+  name: string,
+  kind: ProjectKind,
+  pages: readonly ProjectPage[],
+  framework: string,
+  technologies: readonly string[],
+): ApplicationOverview {
+  const home = pages.find((page) => page.route === "/") ?? pages[0];
+  const primaryHeading = home.headings[0] ?? name;
+  const audienceByKind: Record<ProjectKind, string> = {
+    portfolio: "recruiters, collaborators, clients, and visitors evaluating the owner’s work",
+    commerce: "shoppers comparing products and deciding whether to purchase",
+    blog: "readers discovering articles and following topics or authors",
+    dashboard: "operators who need to understand status and take informed action",
+    api: "developers and connected systems consuming the application’s routes",
+    application: "people using the application to complete its main task",
+  };
+  const purposeByKind: Record<ProjectKind, string> = {
+    portfolio: `${name} presents the owner’s background, experience, work, and contact paths in one portfolio experience.`,
+    commerce: `${name} helps shoppers discover products, evaluate them, and move toward a purchase.`,
+    blog: `${name} helps readers discover, understand, and navigate published content.`,
+    dashboard: `${name} organizes important status, metrics, and actions into a working dashboard.`,
+    api: `${name} exposes application behavior through routes intended for other software and developers.`,
+    application: `${name} connects ${pages.length} detected interface views into a single user experience.`,
+  };
+  const pageFeatures = pages.slice(0, 6).map((page) => ({ title: page.name, description: page.purpose }));
+  const features = [
+    ...pageFeatures,
+    { title: "Navigation", description: home.links.length ? `Visitors can follow ${home.links.slice(0, 5).map((link) => link.label).join(", ")}.` : `The application connects ${pages.length} detected views.` },
+    { title: "Technology", description: `${framework} with ${technologies.join(", ")}.` },
+  ].slice(0, 9);
+  const storyPages = orderStoryPages(pages).slice(0, 4);
+  const actor = kind === "portfolio" ? "A recruiter" : kind === "commerce" ? "A shopper" : kind === "blog" ? "A reader" : "A visitor";
+  const owner = kind === "portfolio" && primaryHeading.length <= 70 ? primaryHeading : name;
+  const storyTitle = kind === "portfolio"
+    ? `${actor} explores ${owner}’s work and decides whether to connect`
+    : `${actor} uses ${name} from the first view to the main outcome`;
+  return {
+    purpose: purposeByKind[kind],
+    audience: audienceByKind[kind],
+    features,
+    storyTitle,
+    storyIntroduction: `${actor} arrives at ${home.name}, sees “${primaryHeading},” and uses the application’s own navigation to decide where to go next.`,
+    storySteps: storyPages.map((page, index) => ({
+      label: index === 0 ? "Arrive" : page.name,
+      description: index === 0 ? page.summary : `Open ${page.name} to ${lowercaseFirst(page.purpose)}.`,
+    })),
+  };
+}
+
+function orderStoryPages(pages: readonly ProjectPage[]) {
+  const priorities = ["home", "experience", "work", "project", "education", "service", "contact", "resume"];
+  return [...pages].sort((left, right) => {
+    const leftText = `${left.name} ${left.route}`.toLowerCase();
+    const rightText = `${right.name} ${right.route}`.toLowerCase();
+    const leftPriority = priorities.findIndex((term) => leftText.includes(term));
+    const rightPriority = priorities.findIndex((term) => rightText.includes(term));
+    return (leftPriority < 0 ? priorities.length : leftPriority) - (rightPriority < 0 ? priorities.length : rightPriority);
+  });
+}
+
+function buildSourceNavigationGraph(name: string, pages: readonly ProjectPage[]): NavigationGraph {
+  const nodes = pages.map((page) => ({ id: page.id, label: page.name, route: page.route, purpose: page.purpose, sourcePath: page.sourcePath }));
+  const byRoute = new Map(pages.map((page) => [normalizeComparableRoute(page.route), page]));
+  const edges: NavigationGraphEdge[] = [];
+  for (const page of pages) {
+    for (const link of page.links) {
+      const destination = byRoute.get(normalizeComparableRoute(link.destination));
+      if (!destination || destination.id === page.id) continue;
+      const edge = { from: page.id, to: destination.id, label: link.label || "Navigate" };
+      if (!edges.some((candidate) => candidate.from === edge.from && candidate.to === edge.to)) edges.push(edge);
+    }
+  }
+  const home = pages.find((page) => page.route === "/") ?? pages[0];
+  if (!edges.length && home) {
+    for (const page of pages) if (page.id !== home.id) edges.push({ from: home.id, to: page.id, label: page.name });
+  }
+  return {
+    title: `Navigation map for ${name}`,
+    summary: `This graph shows which detected pages or sections visitors can open directly from one another. It is a map, not a required step-by-step story.`,
+    layout: edges.filter((edge) => edge.from === home?.id).length > 2 ? "hub" : "network",
+    nodes,
+    edges: edges.slice(0, 30),
+    rationale: "Built from detected routes and link destinations in approved source files.",
+    generatedBy: "source",
+  };
+}
+
+function normalizeComparableRoute(value: string) {
+  if (/^https?:/i.test(value) || value.startsWith("mailto:") || value.startsWith("tel:")) return "__external__";
+  if (value.startsWith("#")) return `/${value}`.toLowerCase();
+  return normalizeRoute(value.split("?")[0]).toLowerCase();
 }
 
 function buildEntityModel(kind: ProjectKind) {
@@ -538,5 +725,14 @@ function slug(value: string) {
 }
 
 function titleCase(value: string) {
-  return value.replace(/\b\w/g, (letter) => letter.toUpperCase());
+  return value
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/[-_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function lowercaseFirst(value: string) {
+  return value ? `${value[0].toLowerCase()}${value.slice(1)}` : value;
 }
