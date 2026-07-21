@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { AppChrome } from "./components/AppChrome";
 import { ImportProjectDialog } from "./components/ImportProjectDialog";
+import { validateSandboxProposal, type SandboxOperation, type SandboxProposal } from "@/lib/ai/sandbox-proposal";
 import type { ImportedProject } from "@/lib/import-sources";
 import { resolveProjectAssetPath, type NavigationGraph, type ProjectPage, type ProjectWorkflowStep, type SafePreviewAsset } from "@/lib/project-analysis";
 import {
@@ -431,9 +432,81 @@ type ApplicationPage = ProjectPage;
 type AssistantPermission = "pending" | "granted" | "declined";
 type ProposalState = "none" | "ready" | "approved";
 type ChatMessage = { role: "assistant" | "user"; text: string };
+type PreviewMode = "original" | "proposed";
+type SandboxDraft = { pageId: string; page: ApplicationPage; proposal: SandboxProposal };
 
 function pagesForProject(project: ImportedProject) {
   return project.analysis?.pages.length ? project.analysis.pages : demoApplicationPages;
+}
+
+function visibleTextForAssistant(page: ApplicationPage) {
+  if (page.previewHtml && typeof DOMParser !== "undefined") {
+    const document = new DOMParser().parseFromString(page.previewHtml, "text/html");
+    const visibleText = document.body?.textContent?.replace(/\s+/g, " ").trim();
+    if (visibleText) return visibleText.slice(0, 6_000);
+  }
+  return [page.name, page.purpose, page.summary, ...page.headings, ...page.navigation]
+    .filter(Boolean)
+    .join(" · ")
+    .slice(0, 6_000);
+}
+
+function applySandboxProposal(page: ApplicationPage, proposal: SandboxProposal): ApplicationPage {
+  const applyTextOperations = (value: string) => proposal.operations.reduce((current, operation) => {
+    if (operation.type === "set_style") return current;
+    return replaceVisibleText(current, operation.target, operation.type === "replace_text" ? operation.value : "");
+  }, value);
+
+  const proposedPage: ApplicationPage = {
+    ...page,
+    purpose: applyTextOperations(page.purpose),
+    summary: applyTextOperations(page.summary),
+    headings: page.headings.map(applyTextOperations).filter(Boolean),
+    navigation: page.navigation.map(applyTextOperations).filter(Boolean),
+  };
+  if (!page.previewHtml || typeof DOMParser === "undefined") return proposedPage;
+
+  const document = new DOMParser().parseFromString(page.previewHtml, "text/html");
+  for (const operation of proposal.operations) applySandboxOperation(document, operation);
+  proposedPage.previewHtml = `<!doctype html>${document.documentElement.outerHTML}`;
+  return proposedPage;
+}
+
+function applySandboxOperation(document: Document, operation: SandboxOperation) {
+  if (operation.type === "set_style") {
+    for (const element of document.querySelectorAll<HTMLElement>(operation.selector)) {
+      element.style.setProperty(operation.property, operation.value);
+    }
+    return;
+  }
+
+  const target = normalizeVisibleText(operation.target);
+  const replacement = operation.type === "replace_text" ? operation.value : "";
+  const candidates = [...document.body.querySelectorAll<HTMLElement>("h1,h2,h3,h4,h5,h6,p,li,a,button,span,div")]
+    .filter((element) => normalizeVisibleText(element.textContent ?? "").includes(target))
+    .sort((left, right) => (left.textContent?.length ?? 0) - (right.textContent?.length ?? 0));
+  const match = candidates[0];
+  if (!match) return;
+
+  const changedText = replaceVisibleText(match.textContent ?? "", operation.target, replacement);
+  if (!changedText && !match.querySelector("img,svg,video,audio")) {
+    match.remove();
+  } else {
+    match.textContent = changedText;
+  }
+}
+
+function replaceVisibleText(value: string, target: string, replacement: string) {
+  if (value.includes(target)) return value.replace(target, replacement).replace(/\s{2,}/g, " ").trim();
+  const normalizedValue = normalizeVisibleText(value);
+  const normalizedTarget = normalizeVisibleText(target);
+  return normalizedValue.includes(normalizedTarget)
+    ? normalizedValue.replace(normalizedTarget, replacement).replace(/\s{2,}/g, " ").trim()
+    : value;
+}
+
+function normalizeVisibleText(value: string) {
+  return value.replace(/\s+/g, " ").trim();
 }
 
 function ApplicationCarousel({
@@ -446,9 +519,29 @@ function ApplicationCarousel({
   onModelUnavailable: () => void;
 }) {
   const [activeIndex, setActiveIndex] = useState(0);
+  const [sandboxDrafts, setSandboxDrafts] = useState<Record<string, SandboxDraft>>({});
+  const [previewModes, setPreviewModes] = useState<Record<string, PreviewMode>>({});
   const pages = pagesForProject(project);
   const safeActiveIndex = activeIndex % pages.length;
   const activePage = pages[safeActiveIndex];
+  const draftStorageKey = `${projectScanCacheKey(project)}:${activePage.id}`;
+  const activeDraft = sandboxDrafts[draftStorageKey] ?? null;
+  const previewMode = previewModes[draftStorageKey] ?? "original";
+
+  function previewProposal(proposal: SandboxProposal) {
+    const draft = { pageId: activePage.id, page: applySandboxProposal(activePage, proposal), proposal };
+    setSandboxDrafts((current) => ({ ...current, [draftStorageKey]: draft }));
+    setPreviewModes((current) => ({ ...current, [draftStorageKey]: "proposed" }));
+  }
+
+  function resetPreview() {
+    setSandboxDrafts((current) => {
+      const next = { ...current };
+      delete next[draftStorageKey];
+      return next;
+    });
+    setPreviewModes((current) => ({ ...current, [draftStorageKey]: "original" }));
+  }
 
   return (
     <section className="panel current-application-panel" aria-labelledby="application-carousel-title">
@@ -464,9 +557,25 @@ function ApplicationCarousel({
       </div>
 
       <div className="application-carousel-layout">
-        <ApplicationInterfaceCarousel project={project} activeIndex={safeActiveIndex} onPageChange={setActiveIndex} contextLabel="Preview" />
+        <ApplicationInterfaceCarousel
+          project={project}
+          activeIndex={safeActiveIndex}
+          onPageChange={setActiveIndex}
+          contextLabel="Preview"
+          sandboxDraft={activeDraft}
+          previewMode={previewMode}
+          onPreviewModeChange={(mode) => setPreviewModes((current) => ({ ...current, [draftStorageKey]: mode }))}
+          onResetPreview={resetPreview}
+        />
 
-        <AiChangeAssistant page={activePage} projectName={project.name} model={model} onModelUnavailable={onModelUnavailable} />
+        <AiChangeAssistant
+          key={`${projectScanCacheKey(project)}:${activePage.id}`}
+          page={activePage}
+          projectName={project.name}
+          model={model}
+          onModelUnavailable={onModelUnavailable}
+          onPreviewProposal={previewProposal}
+        />
       </div>
     </section>
   );
@@ -478,16 +587,26 @@ function ApplicationInterfaceCarousel({
   onPageChange,
   contextLabel,
   compact = false,
+  sandboxDraft = null,
+  previewMode = "original",
+  onPreviewModeChange,
+  onResetPreview,
 }: {
   project: ImportedProject;
   activeIndex: number;
   onPageChange: (index: number) => void;
   contextLabel: string;
   compact?: boolean;
+  sandboxDraft?: SandboxDraft | null;
+  previewMode?: PreviewMode;
+  onPreviewModeChange?: (mode: PreviewMode) => void;
+  onResetPreview?: () => void;
 }) {
   const pages = pagesForProject(project);
   const safeActiveIndex = activeIndex % pages.length;
   const activePage = pages[safeActiveIndex];
+  const activeDraft = sandboxDraft?.pageId === activePage.id ? sandboxDraft : null;
+  const renderedPage = activeDraft && previewMode === "proposed" ? activeDraft.page : activePage;
   const isGuidedDemo = project.source === "demo";
 
   function movePage(direction: number) {
@@ -507,6 +626,19 @@ function ApplicationInterfaceCarousel({
 
   return (
     <div className={compact ? "application-carousel-column compact" : "application-carousel-column"}>
+      {activeDraft && onPreviewModeChange && onResetPreview ? (
+        <div className="sandbox-preview-toolbar" aria-label="Sandbox preview controls">
+          <div>
+            <span className="sandbox-preview-status"><i aria-hidden="true" /> Sandbox preview ready</span>
+            <strong>{activeDraft.proposal.title}</strong>
+          </div>
+          <div className="sandbox-preview-actions" role="group" aria-label="Compare the original and proposed application">
+            <button type="button" className={previewMode === "original" ? "active" : ""} aria-pressed={previewMode === "original"} onClick={() => onPreviewModeChange("original")}>Original</button>
+            <button type="button" className={previewMode === "proposed" ? "active" : ""} aria-pressed={previewMode === "proposed"} onClick={() => onPreviewModeChange("proposed")}>Proposed</button>
+            <button type="button" className="sandbox-reset" onClick={onResetPreview}>Reset preview</button>
+          </div>
+        </div>
+      ) : null}
       <div
         className="application-carousel-stage"
         tabIndex={0}
@@ -517,11 +649,11 @@ function ApplicationInterfaceCarousel({
         <div className="application-browser-bar" aria-hidden="true">
           <span className="browser-dots"><i /><i /><i /></span>
           <span className="browser-address">{project.name.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "application"}.app{activePage.route}</span>
-          <span className="browser-live">{contextLabel}</span>
+          <span className="browser-live">{activeDraft && previewMode === "proposed" ? "Proposed" : contextLabel}</span>
         </div>
         <div className="application-page-live" aria-live="polite" aria-atomic="true">
           <ApplicationPagePreview
-            page={activePage}
+            page={renderedPage}
             project={project}
             onNavigate={(destination) => {
               const destinationRoute = normalizeImportedDestination(destination, activePage.route);
@@ -538,6 +670,13 @@ function ApplicationInterfaceCarousel({
           />
         </div>
       </div>
+
+      {activeDraft ? (
+        <div className="sandbox-preview-summary" role="status">
+          <span aria-hidden="true">{previewMode === "proposed" ? "✓" : "↔"}</span>
+          <p><strong>{previewMode === "proposed" ? "Proposed version shown" : "Original version shown"}</strong>{activeDraft.proposal.summary} No connected source files were changed.</p>
+        </div>
+      ) : null}
 
       <div className="carousel-controls">
         <button type="button" className="carousel-arrow" onClick={() => movePage(-1)} aria-label={`Show previous page in ${project.name}`}>←</button>
@@ -634,30 +773,36 @@ function AiChangeAssistant({
   projectName,
   model,
   onModelUnavailable,
+  onPreviewProposal,
 }: {
   page: ApplicationPage;
   projectName: string;
   model: ModelId;
   onModelUnavailable: () => void;
+  onPreviewProposal: (proposal: SandboxProposal) => void;
 }) {
   const [permission, setPermission] = useState<AssistantPermission>("pending");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [message, setMessage] = useState("");
   const [proposalState, setProposalState] = useState<ProposalState>("none");
+  const [proposal, setProposal] = useState<SandboxProposal | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const modelLabel = modelOptions.find((option) => option.id === model)?.label ?? model;
+  const [replyRoute, setReplyRoute] = useState<{ requested: ModelId; served: ModelId } | null>(null);
+  const replyModel = replyRoute?.requested === model ? replyRoute.served : model;
+  const modelLabel = modelOptions.find((option) => option.id === replyModel)?.label ?? replyModel;
 
   function grantPermission() {
     setPermission("granted");
     setMessages([{
       role: "assistant",
-      text: `Thank you. I can now discuss ${projectName} and prepare a private change plan. What would you like to change on the ${page.name} page?`,
+      text: `Thank you. I can now discuss ${projectName} and prepare a private visual preview. What would you like to change on the ${page.name} page?`,
     }]);
   }
 
   function declinePermission() {
     setPermission("declined");
     setMessages([]);
+    setProposal(null);
     setProposalState("none");
   }
 
@@ -670,6 +815,8 @@ function AiChangeAssistant({
     const nextMessages: ChatMessage[] = [...messages, userMessage].slice(-10);
     setMessages(nextMessages);
     setMessage("");
+    setProposal(null);
+    setProposalState("none");
     setSubmitting(true);
 
     try {
@@ -680,10 +827,19 @@ function AiChangeAssistant({
           model,
           project: projectName,
           page: `${page.name} (${page.route})`,
+          pageContext: {
+            purpose: page.purpose,
+            summary: page.summary,
+            sourcePath: page.sourcePath,
+            headings: page.headings,
+            navigation: page.navigation,
+            links: page.links.map((link) => `${link.label}: ${link.destination}`),
+            visibleText: visibleTextForAssistant(page),
+          },
           messages: nextMessages,
         }),
       });
-      const body = await response.json() as { code?: string; message?: string; output?: string };
+      const body = await response.json() as { code?: string; message?: string; model?: string; fallbackFrom?: string; output?: string; proposal?: unknown };
       if (!response.ok || typeof body.output !== "string" || !body.output.trim()) {
         if (body.code === "MODEL_UNAVAILABLE" || response.status === 503) {
           onModelUnavailable();
@@ -696,8 +852,19 @@ function AiChangeAssistant({
         return;
       }
 
-      setMessages((current) => [...current, { role: "assistant", text: body.output!.trim() }]);
-      setProposalState("ready");
+      const servedModel = modelOptions.find((option) => option.id === body.model);
+      if (servedModel) setReplyRoute({ requested: model, served: servedModel.id });
+      const fallbackMessage = servedModel && servedModel.id !== model
+        ? `The selected model could not answer, so VCAIST used ${servedModel.label}, an available lower-cost fallback.`
+        : null;
+      setMessages((current) => [
+        ...current,
+        ...(fallbackMessage ? [{ role: "assistant" as const, text: fallbackMessage }] : []),
+        { role: "assistant", text: body.output!.trim() },
+      ]);
+      const safeProposal = validateSandboxProposal(body.proposal);
+      setProposal(safeProposal);
+      setProposalState(safeProposal ? "ready" : "none");
     } catch {
       onModelUnavailable();
     } finally {
@@ -706,12 +873,14 @@ function AiChangeAssistant({
   }
 
   function approveProposal() {
+    if (!proposal) return;
+    onPreviewProposal(proposal);
     setProposalState("approved");
     setMessages((current) => [
       ...current,
       {
         role: "assistant",
-        text: "Permission recorded for a sandbox draft. This prototype does not edit connected source files yet, so your original and live application remain unchanged.",
+        text: "The proposed version is now visible in the application carousel. Switch between Original and Proposed to assess it, or reset the preview. No connected source files were changed.",
       },
     ]);
   }
@@ -720,7 +889,7 @@ function AiChangeAssistant({
     <aside className="ai-change-chat" aria-labelledby="ai-change-chat-title">
       <div className="ai-chat-heading">
         <span className="ai-avatar" aria-hidden="true">AI</span>
-        <div><h3 id="ai-change-chat-title">Change assistant</h3><p>{modelLabel} · permission required · live app protected</p></div>
+        <div><h3 id="ai-change-chat-title">Change assistant</h3><p>{modelLabel}{replyModel !== model ? " · automatic fallback" : ""} · permission required · live app protected</p></div>
         <span className={permission === "granted" ? "assistant-status allowed" : "assistant-status"}>{permission === "granted" ? "Allowed" : "Locked"}</span>
       </div>
 
@@ -753,18 +922,18 @@ function AiChangeAssistant({
                 <p>{chatMessage.text}</p>
               </div>
             ))}
-            {submitting ? <div className="chat-bubble assistant thinking"><strong>VCAIST AI</strong><p>Preparing a reviewable plan…</p></div> : null}
+            {submitting ? <div className="chat-bubble assistant thinking"><strong>VCAIST AI</strong><p>Preparing a reviewable visual change…</p></div> : null}
           </div>
 
           {proposalState === "ready" ? (
             <div className="proposal-permission" role="group" aria-label="Approve proposed sandbox draft">
-              <strong>Prepare this draft in the safe sandbox?</strong>
-              <p>Your connected source and live app will stay untouched.</p>
-              <div><button type="button" className="button dark small" onClick={approveProposal}>Approve sandbox draft</button><button type="button" className="text-button" onClick={() => setProposalState("none")}>Keep discussing</button></div>
+              <strong>Preview “{proposal?.title}” in the safe sandbox?</strong>
+              <p>{proposal?.summary} Your connected source and live app will stay untouched.</p>
+              <div><button type="button" className="button dark small" onClick={approveProposal}>Generate sandbox preview</button><button type="button" className="text-button" onClick={() => { setProposal(null); setProposalState("none"); }}>Keep discussing</button></div>
             </div>
           ) : null}
 
-          {proposalState === "approved" ? <div className="proposal-approved" role="status"><span aria-hidden="true">✓</span> Sandbox permission recorded</div> : null}
+          {proposalState === "approved" ? <div className="proposal-approved" role="status"><span aria-hidden="true">✓</span> Sandbox preview ready — compare it with the original</div> : null}
 
           <form className="ai-chat-form" onSubmit={submitMessage}>
             <label className="sr-only" htmlFor="ai-change-message">Describe the application change you want</label>

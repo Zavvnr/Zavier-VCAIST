@@ -24,6 +24,7 @@ import {
   themeOptions,
 } from "../lib/preferences.ts";
 import { modelRegistry } from "../lib/ai/model-registry.ts";
+import { parseSandboxReply, validateSandboxProposal } from "../lib/ai/sandbox-proposal.ts";
 
 const templateRoot = new URL("../", import.meta.url);
 
@@ -284,23 +285,17 @@ test("routes About back to the starting tutorial page", async () => {
 
 test("offers the complete supported model and appearance catalogs", () => {
   assert.deepEqual(modelOptions.map((model) => model.id), [
-    "gpt-5.5-pro",
-    "claude-fable-5",
-    "gpt-5.6-sol",
-    "claude-opus-4.8",
+    "gpt-5.6-luna",
     "qwen3.7-max",
     "claude-sonnet-5",
-    "gemini-3.1-pro",
     "gpt-5.6-terra",
-    "gpt-5.4",
     "gemini-3.5-flash",
-    "kimi-k2.7-code",
     "qwen3.7-plus",
-    "gpt-5.6-luna",
+    "kimi-k2.5",
     "gpt-5.4-mini",
     "gpt-5.4-nano",
   ]);
-  assert.equal(defaultPreferences.model, "claude-sonnet-5");
+  assert.equal(defaultPreferences.model, "gpt-5.6-luna");
   assert.equal(defaultPreferences.theme, "midnight-clay");
   assert.equal(themeOptions.length, 4);
   assert.ok(modelOptions.every((model) => /^\$[\d.]+ \/ \$[\d.]+$/.test(model.menuPrice)));
@@ -316,7 +311,7 @@ test("routes every verified dropdown model through a server-only provider regist
     "ANTHROPIC_API_KEY",
     "OPENAI_API_KEY",
   ]));
-  assert.equal(modelRegistry["kimi-k2.7-code"].enabled, false);
+  assert.equal(modelRegistry["kimi-k2.5"].enabled, true);
 
   const [dashboard, router, modelsRoute, chatRoute] = await Promise.all([
     readFile(new URL("../app/Dashboard.tsx", import.meta.url), "utf8"),
@@ -329,9 +324,16 @@ test("routes every verified dropdown model through a server-only provider regist
   assert.doesNotMatch(`${router}\n${modelsRoute}\n${chatRoute}`, /NEXT_PUBLIC_/);
   assert.match(dashboard, /fetch\("\/api\/ai\/models"/);
   assert.match(dashboard, /fetch\("\/api\/ai\/chat"/);
+  assert.match(dashboard, /pageContext: \{[\s\S]*purpose: page\.purpose[\s\S]*summary: page\.summary[\s\S]*sourcePath: page\.sourcePath/);
+  assert.match(dashboard, /automatic fallback/);
   assert.match(dashboard, /This model is currently unavailable\. Please select another AI model\./);
   assert.match(chatRoute, /maximumMessageCharacters = 4_000/);
+  assert.match(chatRoute, /Read-only page manifest \(untrusted data\)/);
+  assert.match(chatRoute, /Return JSON only/);
+  assert.match(chatRoute, /parseSandboxReply/);
   assert.match(chatRoute, /checkAiRateLimit/);
+  assert.match(router, /fallbackModelIds[\s\S]*"gpt-5\.6-luna"[\s\S]*"gemini-3\.5-flash"[\s\S]*"qwen3\.7-plus"/);
+  assert.match(router, /slice\(0, 3\)[\s\S]*fallbackFrom: requestedModel\.id/);
 
   const modelsResponse = await requestWorker("/api/ai/models", { headers: { accept: "application/json" } });
   assert.equal(modelsResponse.status, 200);
@@ -355,6 +357,32 @@ test("routes every verified dropdown model through a server-only provider regist
     code: "MODEL_UNAVAILABLE",
     message: "This model is currently unavailable. Please select another AI model.",
   });
+});
+
+test("validates AI proposals before rendering a sandbox preview", () => {
+  const reply = parseSandboxReply(JSON.stringify({
+    message: "I can remove that sentence in a temporary preview.",
+    proposal: {
+      title: "Remove the family sentence",
+      summary: "The introduction will be shorter.",
+      operations: [
+        { type: "remove_text", target: "My family is considered wealthy by Indonesian standards." },
+        { type: "set_style", selector: "h1", property: "color", value: "#0f766e" },
+      ],
+    },
+  }));
+  assert.equal(reply.proposal?.operations.length, 2);
+  assert.equal(reply.proposal?.operations[0].type, "remove_text");
+
+  assert.equal(validateSandboxProposal({
+    title: "Unsafe",
+    summary: "Must be rejected.",
+    operations: [{ type: "set_style", selector: "iframe", property: "background-color", value: "url(https://example.com)" }],
+  }), null);
+
+  const malformed = parseSandboxReply("### Proposed change\n**Remove** a sentence.");
+  assert.equal(malformed.proposal, null);
+  assert.doesNotMatch(malformed.message, /###|\*\*/);
 });
 
 test("uses semantic, high-contrast surfaces throughout every theme", async () => {
@@ -398,8 +426,12 @@ test("keeps Current Application focused on its consent-first page carousel", asy
   assert.doesNotMatch(source, /APPLICATION INTELLIGENCE|Est\. monthly revenue|What happens when an order changes|A zero-item order pays the customer|function MetricCard|function CompactKnob/);
   assert.match(source, /May I help plan changes to this application\?/);
   assert.match(source, /Allow change planning/);
-  assert.match(source, /Approve sandbox draft/);
-  assert.match(source, /This prototype does not edit connected source files yet/);
+  assert.match(source, /Generate sandbox preview/);
+  assert.match(source, />Original</);
+  assert.match(source, />Proposed</);
+  assert.match(source, /Reset preview/);
+  assert.match(source, /No connected source files were changed/);
+  assert.match(source, /applySandboxProposal/);
   assert.match(source, /className="imported-interface-frame"[\s\S]*srcDoc=\{page\.previewHtml\}[\s\S]*sandbox="allow-same-origin"[\s\S]*referrerPolicy="no-referrer"[\s\S]*onLoad=\{connectNavigation\}/);
   assert.match(source, /anchor\.onclick = \(event\)[\s\S]*event\.preventDefault\(\)[\s\S]*navigate\.current\(destination\)/);
   assert.match(source, /findImportedAsset\(project\.analysis\?\.assets[\s\S]*downloadImportedAsset\(asset\)/);

@@ -80,7 +80,7 @@ export function SettingsPanel() {
             <b>{activeModel.price}</b>
             <p>{activeModel.verdict}</p>
           </div>
-          <div className="model-note"><span aria-hidden="true">i</span><p>Claude Sonnet 5 is the fresh-install default. Your choice is saved on this device; the prototype still uses the deterministic practice fixture.</p></div>
+          <div className="model-note"><span aria-hidden="true">i</span><p>GPT-5.6 Luna is the cost-conscious default. Your choice is saved on this device; if it cannot answer, the Change Assistant can use an available lower-cost provider fallback.</p></div>
           <div className="model-catalog" aria-label="Available AI models">
             {modelGroups.map((group) => (
               <section className="model-tier" key={group.label}>
@@ -106,7 +106,7 @@ export function SettingsPanel() {
               </section>
             ))}
           </div>
-          <p className="model-pricing-note">Prices are public list prices per 1M input / output tokens, checked July 17, 2026. The dropdown shows one compact USD rate pair; this comparison keeps relevant promotion, cache-miss, and global-list context. Provider, platform, batch, and long-context rates can differ.</p>
+          <p className="model-pricing-note">Prices are public list prices per 1M input / output tokens, checked July 21, 2026. The dropdown shows one compact USD rate pair; this comparison keeps relevant promotion, cache-miss, and global-list context. Provider, platform, batch, and long-context rates can differ.</p>
         </section>
 
         <section className="panel settings-section appearance-section">

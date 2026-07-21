@@ -14,6 +14,7 @@ export type AiRequest = {
 export type AiResult = {
   provider: ProviderId;
   model: string;
+  fallbackFrom?: string;
   responseId?: string;
   output: string;
 };
@@ -25,7 +26,7 @@ export class ModelUnavailableError extends Error {
   }
 }
 
-const providerTimeoutMs = 45_000;
+const providerTimeoutMs = 20_000;
 
 export async function providerFetch(url: string, init: RequestInit): Promise<Response> {
   const controller = new AbortController();

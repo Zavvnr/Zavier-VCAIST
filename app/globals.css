@@ -1003,6 +1003,103 @@ strong {
   min-width: 0;
 }
 
+.sandbox-preview-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--green-soft) 78%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--green) 45%, var(--line));
+  border-radius: 13px;
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--green) 12%, transparent);
+}
+
+.sandbox-preview-toolbar > div:first-child {
+  display: grid;
+  gap: 2px;
+}
+
+.sandbox-preview-toolbar strong { font-size: 10px; }
+
+.sandbox-preview-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--green-dark);
+  font-size: 7px;
+  font-weight: 900;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.sandbox-preview-status i {
+  width: 7px;
+  height: 7px;
+  background: var(--green);
+  border-radius: 50%;
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--green) 18%, transparent);
+}
+
+.sandbox-preview-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding: 4px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.sandbox-preview-actions button {
+  min-height: 30px;
+  padding: 0 10px;
+  color: var(--muted);
+  font: inherit;
+  font-size: 8px;
+  font-weight: 850;
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+.sandbox-preview-actions button:hover,
+.sandbox-preview-actions button:focus-visible { color: var(--ink); background: var(--surface-soft); }
+.sandbox-preview-actions button.active { color: var(--accent-contrast); background: var(--green); }
+.sandbox-preview-actions button.sandbox-reset { color: var(--coral); }
+
+.sandbox-preview-summary {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+  margin-top: 10px;
+  padding: 9px 11px;
+  color: var(--ink);
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: 11px;
+}
+
+.sandbox-preview-summary > span {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  color: var(--accent-contrast);
+  font-weight: 900;
+  background: var(--green);
+  border-radius: 9px;
+}
+
+.sandbox-preview-summary p { margin: 0; color: var(--muted); font-size: 8px; line-height: 1.45; }
+.sandbox-preview-summary strong { display: block; margin-bottom: 2px; color: var(--ink); font-size: 9px; }
+
 .application-carousel-stage {
   overflow: hidden;
   background: var(--surface-soft);
